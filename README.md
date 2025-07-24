@@ -1,4 +1,4 @@
-# CX Whatsapp Sender Beta
+# CX Whatsapp Sender v1.0 Beta
 
 ## Overview
 CX Whatsapp Sender is a Chrome extension designed to facilitate the sending of messages in bulk via WhatsApp Web. This tool aims to streamline communication for users who need to send the same message to multiple contacts efficiently.
