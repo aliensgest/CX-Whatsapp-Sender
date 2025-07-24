@@ -1,0 +1,13 @@
+# Fichiers de dépendances
+node_modules/
+
+# Fichiers de build et de distribution
+dist/
+build/
+
+# Fichiers de logs
+*.log
+
+# Fichiers système (macOS, Windows)
+.DS_Store
+Thumbs.db
