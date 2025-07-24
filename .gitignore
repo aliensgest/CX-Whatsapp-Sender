@@ -11,3 +11,6 @@ build/
 # Fichiers système (macOS, Windows)
 .DS_Store
 Thumbs.db
+# Fichiers backup
+*.bak
+*.tmp
