@@ -8,47 +8,74 @@
 </head>
 <body>
     <div id="popup-container">
-        <h1>CX Whatsapp Sender</h1>
-        <div id="template-manager">
-            <select id="template-select"><option value="">Sélectionner un modèle</option></select>
-            <div id="template-buttons">
-                <button id="save-template-button" class="template-action-button" title="Sauvegarder le message actuel comme nouveau modèle">+</button>
-                <button id="delete-template-button" class="template-action-button" title="Supprimer le modèle sélectionné">-</button>
+        <!-- ================== VUE PRINCIPALE ================== -->
+        <div id="main-view">
+            <h1>CX Whatsapp Sender</h1>
+            <div id="template-manager">
+                <select id="template-select"><option value="">Sélectionner un modèle</option></select>
+                <div id="template-buttons">
+                    <button id="save-template-button" class="template-action-button" title="Sauvegarder le message actuel comme nouveau modèle">+</button>
+                    <button id="delete-template-button" class="template-action-button" title="Supprimer le modèle sélectionné">-</button>
+                </div>
             </div>
-        </div>
-        <textarea id="message" placeholder="Entrez votre message ici..."></textarea>
-        <div id="contact-list-manager" class="template-manager">
-            <select id="contact-list-select"><option value="">Sélectionner une liste</option></select>
-            <div class="template-buttons">
-                <button id="save-contact-list-button" class="template-action-button" title="Sauvegarder la liste de contacts actuelle">+</button>
-                <button id="delete-contact-list-button" class="template-action-button" title="Supprimer la liste sélectionnée">-</button>
+            <textarea id="message" placeholder="Entrez votre message ici..."></textarea>
+            <div id="contact-list-manager" class="template-manager">
+                <select id="contact-list-select"><option value="">Sélectionner une liste</option></select>
+                <div class="template-buttons">
+                    <button id="save-contact-list-button" class="template-action-button" title="Sauvegarder la liste de contacts actuelle">+</button>
+                    <button id="delete-contact-list-button" class="template-action-button" title="Supprimer la liste sélectionnée">-</button>
+                </div>
             </div>
-        </div>
-        <textarea id="contacts" placeholder="Copiez-collez une liste de numéros (un par ligne ou séparés par des virgules)..."></textarea>
-        <div id="audio-recorder">
-            <button id="record-audio-button" type="button" class="secondary-button">Enregistrer un message vocal</button>
-            <div id="recording-controls" class="recording-controls-hidden">
-                <button id="stop-recording-button" type="button" class="stop-button">Arrêter</button>
-                <span id="recording-timer">00:00</span>
-                <span class="recording-indicator"></span>
+            <textarea id="contacts" placeholder="Copiez-collez une liste de numéros (un par ligne ou séparés par des virgules)..."></textarea>
+            <div id="audio-recorder">
+                <button id="record-audio-button" type="button" class="secondary-button">Enregistrer un message vocal</button>
+                <div id="recording-controls" class="recording-controls-hidden">
+                    <button id="stop-recording-button" type="button" class="stop-button">Arrêter</button>
+                    <span id="recording-timer">00:00</span>
+                    <span class="recording-indicator"></span>
+                </div>
             </div>
+            <button id="attach-file-button" type="button" class="secondary-button">Joindre un fichier (image/doc)</button>
+            <div id="attachment-preview" style="display: none;"></div>
+            <input type="file" id="attachment-input" multiple style="display: none;">
+            <button id="import-csv-button" type="button" class="secondary-button">Importer un fichier CSV</button>
+            <input type="file" id="csv-file-input" accept=".csv" style="display: none;">
+            <button id="send-button">Send Messages</button>
+            <div id="progress-container" style="display: none;">
+                <div id="progress-bar"></div>
+            </div>
+            <div id="status"></div>
+            <div id="log-controls">
+                <button id="toggle-logs-button" class="secondary-button">Afficher/Cacher les logs</button>
+                <button id="clear-logs-button" class="secondary-button" style="display: none;">Effacer les logs</button>
+                <button id="open-options-button" class="secondary-button">Options</button>
+            </div>
+            <pre id="logs-display" style="display: none;"></pre>
+            <button id="fix-permission-button" class="secondary-button" style="display: none;">Corriger la permission du micro</button>
         </div>
-        <button id="attach-file-button" type="button" class="secondary-button">Joindre un fichier (image/doc)</button>
-        <div id="attachment-preview" style="display: none;"></div>
-        <input type="file" id="attachment-input" multiple style="display: none;">
-        <button id="import-csv-button" type="button" class="secondary-button">Importer un fichier CSV</button>
-        <input type="file" id="csv-file-input" accept=".csv" style="display: none;">
-        <button id="send-button">Send Messages</button>
-        <div id="progress-container" style="display: none;">
-            <div id="progress-bar"></div>
+
+        <!-- =================== VUE OPTIONS ==================== -->
+        <div id="options-view" class="hidden">
+            <div class="view-header">
+                <button id="back-to-main-button" class="back-button">&larr;</button>
+                <h2>Options</h2>
+            </div>
+            <div class="option-item">
+                <label for="delay-min">Délai minimum entre les messages (secondes)</label>
+                <input type="number" id="delay-min" min="1">
+                <div class="description">Un délai aléatoire est appliqué (entre la valeur min et le double de cette valeur) pour simuler un comportement humain.</div>
+            </div>
+            <div class="option-item">
+                <label for="dev-mode-switch">Mode développeur</label>
+                <label class="switch">
+                    <input type="checkbox" id="dev-mode-switch">
+                    <span class="slider round"></span>
+                </label>
+                <div class="description">Affiche les options de débogage comme le bouton des logs.</div>
+            </div>
+            <button id="save-options-button" class="secondary-button">Enregistrer</button>
+            <div id="save-status"></div>
         </div>
-        <div id="status"></div>
-        <div id="log-controls">
-            <button id="toggle-logs-button" class="secondary-button">Afficher/Cacher les logs</button>
-            <button id="clear-logs-button" class="secondary-button" style="display: none;">Effacer les logs</button>
-        </div>
-        <pre id="logs-display" style="display: none;"></pre>
-        <button id="fix-permission-button" class="secondary-button" style="display: none;">Corriger la permission du micro</button>
     </div>
     <script src="logger.js"></script>
     <script src="popup.js"></script>

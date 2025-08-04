@@ -228,25 +228,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.log("=== CX WHATSAPP SENDER - NEW BULK MESSAGE JOB ===", request);
 
         (async () => {
+            // Charger la configuration avant de commencer
+            const { config } = await chrome.storage.local.get({
+                config: {
+                    delayMin: 5 // Valeur par défaut si non configuré
+                }
+            });
+            const minDelaySeconds = config.delayMin;
+            const maxDelaySeconds = minDelaySeconds * 2;
+
             const { message, contacts, attachments } = request;
             let successCount = 0;
             let errorDetails = [];
 
             for (let i = 0; i < contacts.length; i++) {
                 const contact = contacts[i];
-                chrome.runtime.sendMessage({ action: "updateProgress", processed: i, total: contacts.length, currentContact: contact });
+                chrome.runtime.sendMessage({ action: "updateProgress", processed: i, total: contacts.length, currentContact: contact, source: 'content' });
                 const result = await processSingleContact(contact, message, attachments);
                 if (result.success) {
                     successCount++;
                 } else {
                     errorDetails.push(`${contact}: ${result.reason}`);
                 }
-                const randomDelay = Math.floor(Math.random() * 2000) + 1000;
-                console.log(`Waiting for ${randomDelay}ms before next contact...`);
-                await sleep(randomDelay);
+                const randomDelay = Math.floor(Math.random() * (maxDelaySeconds - minDelaySeconds + 1) + minDelaySeconds) * 1000;
+                console.log(`Waiting for ${randomDelay / 1000}s before next contact...`);
+                if (i < contacts.length - 1) await sleep(randomDelay); // Ne pas attendre après le dernier contact
             }
 
-            chrome.runtime.sendMessage({ action: "updateProgress", processed: contacts.length, total: contacts.length, currentContact: "Terminé !" });
+            chrome.runtime.sendMessage({ action: "updateProgress", processed: contacts.length, total: contacts.length, currentContact: "Terminé !", source: 'content' });
             const finalStatus = `Terminé. ${successCount}/${contacts.length} message(s) envoyé(s) avec succès.`;
             sendResponse({ status: finalStatus, errors: errorDetails });
         })();

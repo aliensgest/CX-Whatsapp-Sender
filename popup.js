@@ -30,19 +30,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearLogsButton = document.getElementById('clear-logs-button');
     const logsDisplay = document.getElementById('logs-display');
 
+    // Éléments des vues
+    const mainView = document.getElementById('main-view');
+    const optionsView = document.getElementById('options-view');
+    const openOptionsButton = document.getElementById('open-options-button');
+    const backToMainButton = document.getElementById('back-to-main-button');
+
+    // Éléments de la vue Options
+    const saveOptionsButton = document.getElementById('save-options-button');
+    const saveStatusDiv = document.getElementById('save-status');
+    const delayMinInput = document.getElementById('delay-min');
+    const devModeSwitch = document.getElementById('dev-mode-switch');
+
     let timerInterval;
     let secondsRecorded = 0;
-    
+    let currentConfig = {}; // Pour garder la configuration actuelle en mémoire
     let attachments = []; // Pour stocker les données des fichiers joints
 
     // Écouteur pour les mises à jour de progression envoyées par content.js
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        logToBackground(`Received message: type=${request.type || request.action}`);
+        if (request.source !== 'content') { // Ne pas logger les messages de progression
+            logToBackground(`Received message from ${request.source || 'unknown'}: type=${request.type || request.action}`);
+        }
         // Gère la barre de progression
         // Cacher le bouton de correction si une autre action a lieu
         fixPermissionButton.style.display = 'none';
 
-        if (request.action === "updateProgress") {
+        if (request.action === "updateProgress" && request.source === 'content') {
             const percent = (request.processed / request.total) * 100;
             progressBar.style.width = percent + '%';
             statusDiv.textContent = `Envoi ${request.processed}/${request.total} : ${request.currentContact}...`;
@@ -107,6 +121,73 @@ document.addEventListener('DOMContentLoaded', function() {
         logsDisplay.textContent = 'Journal effacé.';
         logToBackground('Logs cleared.');
     });
+
+    // --- GESTION DE LA NAVIGATION ENTRE LES VUES ---
+    openOptionsButton.addEventListener('click', () => {
+        mainView.classList.add('hidden');
+        optionsView.classList.remove('hidden');
+    });
+
+    backToMainButton.addEventListener('click', () => {
+        optionsView.classList.add('hidden');
+        mainView.classList.remove('hidden');
+    });
+
+    // --- GESTION DE LA CONFIGURATION ---
+
+    /**
+     * Applique la configuration à l'interface utilisateur.
+     * @param {object} config - L'objet de configuration.
+     */
+    function applyConfig(config) {
+        currentConfig = config;
+        // Affiche ou cache les contrôles de logs en fonction du mode développeur
+        if (config.devMode) {
+            toggleLogsButton.style.display = ''; // Rétablit l'affichage par défaut (flex item)
+        } else {
+            toggleLogsButton.style.display = 'none';
+            // S'assure que le panneau de logs et le bouton d'effacement sont aussi cachés
+            logsDisplay.style.display = 'none';
+            clearLogsButton.style.display = 'none';
+        }
+    }
+
+    // --- LOGIQUE DE LA VUE OPTIONS ---
+    function saveOptions() {
+        const delayMin = parseInt(delayMinInput.value, 10);
+        const devMode = devModeSwitch.checked;
+
+        if (isNaN(delayMin) || delayMin < 1) {
+            saveStatusDiv.textContent = 'Délai invalide (min 1s).';
+            saveStatusDiv.style.color = '#c62828'; // Rouge
+            return;
+        }
+        
+        const newConfig = { ...currentConfig, delayMin, devMode };
+
+        chrome.storage.local.set({ config: newConfig }, () => {
+            saveStatusDiv.textContent = 'Options enregistrées !';
+            saveStatusDiv.style.color = '#00a884'; // Vert
+            applyConfig(newConfig); // Applique les changements immédiatement
+            setTimeout(() => {
+                saveStatusDiv.textContent = '';
+            }, 2000);
+        });
+    }
+
+    function loadOptions() {
+        chrome.storage.local.get({
+            config: {
+                delayMin: 5, // Valeur par défaut
+                devMode: false // Mode développeur désactivé par défaut
+            }
+        }, (items) => {
+            delayMinInput.value = items.config.delayMin;
+            devModeSwitch.checked = items.config.devMode;
+            applyConfig(items.config);
+        });
+    }
+    saveOptionsButton.addEventListener('click', saveOptions);
 
     // --- GESTION DES MODÈLES ---
     async function loadTemplates() {
@@ -366,5 +447,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialisation
     loadTemplates();
     loadContactLists();
+    loadOptions();
     logToBackground('Popup opened.');
 });
