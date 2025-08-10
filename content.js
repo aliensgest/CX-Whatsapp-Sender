@@ -291,6 +291,7 @@ function injectToolbar(isActive) {
                 <div class="cx-toolbar-actions">
                     <button id="cx-send-bulk-btn" class="cx-toolbar-btn">🚀 Envoi en masse</button>
                     <button id="cx-manage-templates-btn" class="cx-toolbar-btn">📋 Gérer les modèles</button>
+                    <button id="cx-manage-lists-btn" class="cx-toolbar-btn">👥 Gérer les listes</button>
                     <button id="cx-settings-btn" class="cx-toolbar-btn">⚙️ Options</button>
                 </div>
             </div>
@@ -342,6 +343,11 @@ function injectToolbar(isActive) {
 
         const manageTemplatesBtn = document.getElementById('cx-manage-templates-btn');
         manageTemplatesBtn.addEventListener('click', openTemplatesModal);
+
+        const manageListsBtn = document.getElementById('cx-manage-lists-btn');
+        manageListsBtn.addEventListener('click', () => {
+            openContactListsModal();
+        });
 
         const settingsBtn = document.getElementById('cx-settings-btn');
         settingsBtn.addEventListener('click', openOptionsModal);
@@ -731,6 +737,130 @@ async function handleModalSend() {
 }
 
 /**
+ * Crée et injecte la fenêtre modale pour la gestion des listes de contacts.
+ */
+function injectContactListsModal() {
+    if (document.getElementById('cx-contact-lists-modal-overlay')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'cx-contact-lists-modal-overlay';
+    modal.classList.add('cx-modal-hidden');
+    modal.innerHTML = `
+        <div id="cx-contact-lists-modal-content">
+            <div id="cx-contact-lists-modal-header">
+                <h2>👥 Gérer les listes de contacts</h2>
+                <button id="cx-contact-lists-modal-close-btn">&times;</button>
+            </div>
+            <div id="cx-contact-lists-modal-body">
+                <div id="cx-contact-lists-list-container">
+                    <h3>Listes existantes</h3>
+                    <ul id="cx-contact-lists-list"></ul>
+                </div>
+                <div id="cx-contact-list-editor-container">
+                    <h3>Éditeur de liste</h3>
+                    <input type="text" id="cx-contact-list-name-input" placeholder="Nom de la liste...">
+                    <textarea id="cx-contact-list-content-textarea" placeholder="Numéros de téléphone, un par ligne..."></textarea>
+                    <div id="cx-contact-list-editor-actions">
+                        <button id="cx-contact-list-save-btn">Enregistrer</button>
+                        <button id="cx-contact-list-new-btn" class="secondary">Nouveau</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // --- Logique de la modale ---
+    const overlay = document.getElementById('cx-contact-lists-modal-overlay');
+    const closeBtn = document.getElementById('cx-contact-lists-modal-close-btn');
+    const saveBtn = document.getElementById('cx-contact-list-save-btn');
+    const newBtn = document.getElementById('cx-contact-list-new-btn');
+    const listUI = document.getElementById('cx-contact-lists-list');
+
+    closeBtn.addEventListener('click', closeContactListsModal);
+    overlay.addEventListener('click', (e) => {
+        if (e.target.id === 'cx-contact-lists-modal-overlay') closeContactListsModal();
+    });
+
+    newBtn.addEventListener('click', () => {
+        document.getElementById('cx-contact-list-name-input').value = '';
+        document.getElementById('cx-contact-list-content-textarea').value = '';
+        document.getElementById('cx-contact-list-name-input').readOnly = false;
+        document.getElementById('cx-contact-list-name-input').focus();
+        listUI.querySelector('li.selected')?.classList.remove('selected');
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const name = document.getElementById('cx-contact-list-name-input').value.trim();
+        const content = document.getElementById('cx-contact-list-content-textarea').value.trim();
+        if (!name) return alert('Le nom de la liste est requis.');
+
+        const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+        contactLists[name] = content;
+        await chrome.storage.local.set({ contactLists });
+        await renderContactListsInModal();
+        alert(`Liste "${name}" enregistrée !`);
+    });
+
+    listUI.addEventListener('click', async (e) => {
+        const listItem = e.target.closest('li');
+        if (!listItem) return;
+        const listName = listItem.dataset.listName;
+
+        if (e.target.classList.contains('delete-list')) {
+            if (confirm(`Supprimer la liste "${listName}" ?`)) {
+                const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+                delete contactLists[listName];
+                await chrome.storage.local.set({ contactLists });
+                await renderContactListsInModal();
+                if (document.getElementById('cx-contact-list-name-input').value === listName) newBtn.click();
+            }
+        } else {
+            const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+            document.getElementById('cx-contact-list-name-input').value = listName;
+            document.getElementById('cx-contact-list-name-input').readOnly = true;
+            document.getElementById('cx-contact-list-content-textarea').value = contactLists[listName] || '';
+            listUI.querySelector('li.selected')?.classList.remove('selected');
+            listItem.classList.add('selected');
+        }
+    });
+}
+
+async function openContactListsModal() {
+    const modal = document.getElementById('cx-contact-lists-modal-overlay');
+    if (modal) {
+        await renderContactListsInModal();
+        modal.classList.remove('cx-modal-hidden');
+    }
+}
+
+function closeContactListsModal() {
+    document.getElementById('cx-contact-lists-modal-overlay')?.classList.add('cx-modal-hidden');
+}
+
+async function renderContactListsInModal() {
+    const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+    const listElement = document.getElementById('cx-contact-lists-list');
+    const currentSelected = listElement.querySelector('li.selected')?.dataset.listName;
+    listElement.innerHTML = '';
+
+    if (Object.keys(contactLists).length === 0) {
+        listElement.innerHTML = '<li>Aucune liste.</li>';
+        return;
+    }
+
+    for (const name in contactLists) {
+        const listItem = document.createElement('li');
+        listItem.dataset.listName = name;
+        listItem.innerHTML = `<span>${name}</span><button class="delete-list" title="Supprimer">&times;</button>`;
+        if (name === currentSelected) {
+            listItem.classList.add('selected');
+        }
+        listElement.appendChild(listItem);
+    }
+}
+
+/**
  * Crée et injecte la fenêtre modale pour les options.
  */
 function injectOptionsModal() {
@@ -836,6 +966,7 @@ async function initializeInjectedUI() {
         if (isActive) {
             injectBulkSendModal();
             injectTemplatesModal();
+            injectContactListsModal();
             injectOptionsModal();
         }
     } catch (error) {
