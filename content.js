@@ -976,3 +976,105 @@ async function initializeInjectedUI() {
 
 // Lance l'injection de l'UI
 initializeInjectedUI();
+
+/**
+ * Normalise un numéro en format +prefixNNNNNNNNN.
+ * @param {string} raw - Le numéro brut.
+ * @returns {string} - Le numéro normalisé.
+ */
+function normalizePhoneNumber(raw) {
+    let num = raw.replace(/[^\d]/g, '');
+    // Ajoute le + si absent et suppose le prefix 212 si le numéro commence par 0 ou rien
+    if (num.startsWith('0')) num = '212' + num.slice(1);
+    if (!num.startsWith('212') && num.length === 9) num = '212' + num;
+    return '+' + num;
+}
+
+/**
+ * Injecte le bouton "Ajouter à une liste" à côté du numéro dans la fiche contact.
+ * Affiche un sélecteur de liste lors du clic.
+ */
+function injectAddToListButtonOnContactInfo() {
+    const infoBlocks = document.querySelectorAll('.x1c4vz4f.x3nfvp2.xuce83p.x1bft6iq.x1i7k8ik.xq9mrsl.x6s0dn4');
+    infoBlocks.forEach(block => {
+        if (block.querySelector('.cxws-addtolist-btn')) return;
+        let numberSpan = block.querySelector('span[dir="auto"]');
+        if (!numberSpan) return;
+        const numberText = numberSpan.textContent.trim();
+        if (!/^\+?\d[\d\s\-]+$/.test(numberText)) return;
+
+        // Crée le bouton
+        const btn = document.createElement('button');
+        btn.innerText = '➕ Ajouter à une liste';
+        btn.className = 'cxws-addtolist-btn';
+        btn.style.marginLeft = '8px';
+        btn.style.background = '#25d366';
+        btn.style.color = '#fff';
+        btn.style.border = 'none';
+        btn.style.borderRadius = '4px';
+        btn.style.padding = '2px 8px';
+        btn.style.fontSize = '12px';
+        btn.style.cursor = 'pointer';
+        numberSpan.parentNode.appendChild(btn);
+
+        // Gestion du clic : affiche le sélecteur de liste et ajoute le numéro
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            // Récupère les listes existantes
+            const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+            const listNames = Object.keys(contactLists);
+            if (listNames.length === 0) {
+                alert('Aucune liste existante. Créez une liste d\'abord.');
+                return;
+            }
+
+            // Crée le popup de sélection de liste
+            let popup = document.getElementById('cxws-addtolist-popup');
+            if (popup) popup.remove();
+            popup = document.createElement('div');
+            popup.id = 'cxws-addtolist-popup';
+            popup.style.position = 'fixed';
+            popup.style.top = (e.clientY + 10) + 'px';
+            popup.style.left = (e.clientX - 80) + 'px';
+            popup.style.background = '#fff';
+            popup.style.border = '1px solid #25d366';
+            popup.style.borderRadius = '6px';
+            popup.style.padding = '10px';
+            popup.style.zIndex = 9999;
+            popup.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+            popup.innerHTML = `
+                <div style="margin-bottom:6px;font-weight:bold;">Ajouter à une liste :</div>
+                <select id="cxws-list-select" style="width:100%;margin-bottom:8px;">
+                    ${listNames.map(name => `<option value="${name}">${name}</option>`).join('')}
+                </select>
+                <button id="cxws-confirm-add-btn" style="background:#25d366;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;">Ajouter</button>
+                <button id="cxws-cancel-add-btn" style="margin-left:8px;background:#eee;color:#333;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;">Annuler</button>
+            `;
+            document.body.appendChild(popup);
+
+            // Annuler
+            popup.querySelector('#cxws-cancel-add-btn').onclick = () => popup.remove();
+
+            // Ajouter à la liste sélectionnée
+            popup.querySelector('#cxws-confirm-add-btn').onclick = async () => {
+                const selectedList = popup.querySelector('#cxws-list-select').value;
+                let normalized = normalizePhoneNumber(numberText);
+                let content = contactLists[selectedList] || '';
+                let numbers = content.split('\n').map(x => x.trim()).filter(x => x);
+                if (!numbers.includes(normalized)) {
+                    numbers.push(normalized);
+                    contactLists[selectedList] = numbers.join('\n');
+                    await chrome.storage.local.set({ contactLists });
+                }
+                popup.remove();
+                alert(`Numéro ${normalized} ajouté à la liste "${selectedList}"`);
+            };
+        });
+    });
+}
+
+// Observe les changements du DOM pour injecter le bouton à chaque affichage de fiche contact
+const cxwsContactInfoObserver = new MutationObserver(() => {
+    injectAddToListButtonOnContactInfo();
+});
+cxwsContactInfoObserver.observe(document.body, { childList: true, subtree: true });
