@@ -1,9 +1,22 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
+    // --- CONFIGURATION ---
+    const API_BASE_URL = 'http://192.168.1.22:8055';
+    const WEBHOOK_URL = `http://192.168.1.22:8055/flows/trigger/38345740-be05-4138-aa7d-8b1fc650bf7a`;
+
+    // --- ÉLÉMENTS DU DOM (Activation) ---
+    const loginSection = document.getElementById('login-section');
+    const verifyBtn = document.getElementById('verify-btn');
+    const phoneInput = document.getElementById('phone-input');
+    const errorMessage = document.getElementById('error-message');
+
     // Helper function to send log messages to the background script
     function logToBackground(message) {
         chrome.runtime.sendMessage({ type: 'log', source: 'Popup', message: message });
     }
 
+    // --- ÉLÉMENTS DU DOM (Fonctionnalités Principales) ---
+    const popupContainer = document.getElementById('popup-container'); // Conteneur principal des fonctionnalités
+    const mainView = document.getElementById('main-view');
     const sendButton = document.getElementById('send-button');
     const messageInput = document.getElementById('message');
     const contactsInput = document.getElementById('contacts');
@@ -30,8 +43,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearLogsButton = document.getElementById('clear-logs-button');
     const logsDisplay = document.getElementById('logs-display');
 
-    // Éléments des vues
-    const mainView = document.getElementById('main-view');
+    // Éléments des vues (Options)
     const optionsView = document.getElementById('options-view');
     const openOptionsButton = document.getElementById('open-options-button');
     const backToMainButton = document.getElementById('back-to-main-button');
@@ -46,6 +58,95 @@ document.addEventListener('DOMContentLoaded', function() {
     let secondsRecorded = 0;
     let currentConfig = {}; // Pour garder la configuration actuelle en mémoire
     let attachments = []; // Pour stocker les données des fichiers joints
+
+    // --- LOGIQUE D'ACTIVATION ---
+    // --- FONCTIONS D'AFFICHAGE ---
+    function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.classList.remove('hidden');
+    }
+
+    function showLogin() {
+        loginSection.classList.remove('hidden');
+        popupContainer.classList.add('hidden');
+    }
+
+    function showMainFeatures() {
+        loginSection.classList.add('hidden');
+        popupContainer.classList.remove('hidden');
+        // Charger les données de l'application une fois l'utilisateur authentifié
+        loadTemplates();
+        loadContactLists();
+        loadOptions();
+        logToBackground('Popup opened and user authenticated.');
+    }
+    
+    // --- LOGIQUE DE SESSION ---
+    /**
+     * Vérifie l'état de la session de l'utilisateur en interrogeant le serveur.
+     * @returns {Promise<{status: 'VALID' | 'INVALID_TOKEN' | 'NO_SESSION' | 'API_ERROR', message?: string}>}
+     */
+    async function checkStoredToken() {
+        logToBackground('Checking for stored session...');
+        const session = await chrome.storage.local.get(['activationToken', 'userPhone']);
+        if (!session.activationToken || !session.userPhone) {
+            logToBackground('No session found in storage.');
+            return { status: 'NO_SESSION' };
+        }
+
+        logToBackground(`Found session for ${session.userPhone}. Validating token with server...`);
+
+        try {
+            // On cherche un utilisateur qui a à la fois le bon numéro ET le bon token
+            const encodedPhone = encodeURIComponent(session.userPhone);
+            const encodedToken = encodeURIComponent(session.activationToken); // Bonne pratique d'encoder aussi le token
+            const validationUrl = `${API_BASE_URL}/items/CX_Users?filter[_and][0][phone][_eq]=${encodedPhone}&filter[_and][1][activation_token][_eq]=${encodedToken}&limit=1`;
+            const response = await fetch(validationUrl);
+
+            if (!response.ok) {
+                console.error("Erreur serveur lors de la validation du token:", response.status, response.statusText);
+                logToBackground(`Token validation API call failed with status: ${response.status}`);
+                return { status: 'API_ERROR', message: `Erreur serveur (${response.status})` };
+            }
+            const result = await response.json();
+
+            if (result.data && result.data.length === 1) {
+                logToBackground('Token is VALID.');
+                return { status: 'VALID' }; // Le token est valide !
+            } else {
+                // Le token existe localement mais n'est plus valide (ex: une autre session a été activée)
+                logToBackground('Token is INVALID. It will be cleared. Another device may have logged in.');
+                await chrome.storage.local.remove(['activationToken', 'userPhone']);
+                return { status: 'INVALID_TOKEN' };
+            }
+        } catch (error) {
+            console.error("Erreur durant la vérification du token:", error);
+            logToBackground(`Token validation failed with exception: ${error.message}`);
+            return { status: 'API_ERROR', message: error.message };
+        }
+    }
+
+    /**
+     * Appelle le Flow pour activer une nouvelle session.
+     */
+    async function activateExtension(phoneNumber) {
+        try {
+            const response = await fetch(WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phoneNumber })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                const errorMsg = data.errors?.[0]?.message || "Erreur d'activation.";
+                return { success: false, message: errorMsg };
+            }
+            return data; // Devrait être { success: true, token: "..." }
+        } catch (error) {
+            return { success: false, message: 'Erreur de connexion au service.' };
+        }
+    }
 
     // Écouteur pour les mises à jour de progression envoyées par content.js
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -124,7 +225,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- GESTION DE LA NAVIGATION ENTRE LES VUES ---
     openOptionsButton.addEventListener('click', () => {
-        mainView.classList.add('hidden');
         optionsView.classList.remove('hidden');
     });
 
@@ -444,9 +544,66 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Initialisation
-    loadTemplates();
-    loadContactLists();
-    loadOptions();
-    logToBackground('Popup opened.');
+    // --- GESTION DES ÉVÉNEMENTS & INITIALISATION ---
+
+    // Gérer le clic sur le bouton de vérification
+    verifyBtn.addEventListener('click', async () => {
+        errorMessage.classList.add('hidden');
+        const phoneNumber = phoneInput.value.trim();
+        if (!phoneNumber) {
+            showError("Veuillez entrer un numéro de téléphone.");
+            return;
+        }
+
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = "Vérification...";
+
+        const activation = await activateExtension(phoneNumber);
+
+        if (activation.success) {
+            // Succès ! On stocke le token ET le numéro de tel.
+            await chrome.storage.local.set({ 
+                activationToken: activation.token,
+                userPhone: phoneNumber 
+            });
+            showMainFeatures();
+        } else {
+            showError(activation.message);
+        }
+
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = "Vérifier";
+    });
+
+    /**
+     * POINT D'ENTRÉE : C'est la première chose qui s'exécute quand le popup s'ouvre.
+     */
+    async function initializePopup() {
+        const sessionState = await checkStoredToken();
+        
+        switch (sessionState.status) {
+            case 'VALID':
+                // Le token est valide, on affiche les fonctionnalités.
+                showMainFeatures();
+                break;
+            
+            case 'INVALID_TOKEN':
+                // Le token n'est plus valide (une autre session a été activée).
+                showLogin();
+                showError("Déjà connecté sur un autre appareil. Veuillez réactiver votre accès.");
+                break;
+
+            case 'NO_SESSION':
+                // Aucun token en mémoire, l'utilisateur doit s'activer.
+                showLogin();
+                // L'erreur "Pas d'abonnement actif" sera affichée après une tentative d'activation échouée, ce qui est plus logique.
+                break;
+
+            case 'API_ERROR':
+                showLogin();
+                showError(`Erreur de connexion: ${sessionState.message}. Veuillez réessayer.`);
+                break;
+        }
+    }
+    initializePopup();
 });

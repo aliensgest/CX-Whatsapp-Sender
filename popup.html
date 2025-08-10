@@ -7,8 +7,16 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="popup-container">
-        <!-- ================== VUE PRINCIPALE ================== -->
+    <div id="login-section">
+        <h3>Activer votre accès</h3>
+        <p>Veuillez entrer le numéro de téléphone lié à votre abonnement.</p>
+        <input type="tel" id="phone-input" placeholder="Numéro WhatsApp">
+        <button id="verify-btn">Vérifier</button>
+        <p id="error-message" class="hidden"></p>
+    </div>
+
+    <div id="popup-container" class="hidden">
+        <!-- ================== VUE PRINCIPALE (maintenant cachée par défaut) ================== -->
         <div id="main-view">
             <h1>CX Whatsapp Sender</h1>
             <div id="template-manager">

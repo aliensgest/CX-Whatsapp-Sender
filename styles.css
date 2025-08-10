@@ -353,3 +353,57 @@ input:checked + .slider:before {
 .slider.round:before {
   border-radius: 50%;
 }
+.hidden {
+    display: none !important;
+}
+
+/* --- Styles pour la section d'activation --- */
+#login-section {
+    width: 350px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    box-sizing: border-box;
+}
+
+#login-section h3 {
+    font-size: 20px;
+    color: #111b21;
+    text-align: center;
+    margin: 0 0 5px 0;
+}
+
+#login-section p {
+    font-size: 14px;
+    color: #667781;
+    text-align: center;
+    margin: 0;
+}
+
+#login-section input[type="tel"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+#login-section button {
+    background-color: #00a884; /* Vert WhatsApp */
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#error-message {
+    color: #c62828;
+    font-weight: bold;
+    text-align: center;
+    margin-top: -5px; /* Rapprocher du bouton */
+}
