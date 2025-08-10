@@ -984,26 +984,66 @@ initializeInjectedUI();
  */
 function normalizePhoneNumber(raw) {
     let num = raw.replace(/[^\d]/g, '');
-    // Ajoute le + si absent et suppose le prefix 212 si le numéro commence par 0 ou rien
     if (num.startsWith('0')) num = '212' + num.slice(1);
     if (!num.startsWith('212') && num.length === 9) num = '212' + num;
     return '+' + num;
 }
 
 /**
+ * Affiche des labels sur le contact si le numéro est déjà dans des listes.
+ * @param {Element} block - Le bloc info du contact.
+ * @param {string} normalizedNumber - Le numéro normalisé.
+ * @param {Object} contactLists - Les listes de contacts déjà chargées.
+ */
+function showContactListLabels(block, normalizedNumber, contactLists) {
+    const lists = Object.entries(contactLists)
+        .filter(([name, content]) => {
+            const numbers = content.split('\n').map(x => x.trim());
+            return numbers.includes(normalizedNumber);
+        })
+        .map(([name]) => name);
+
+    block.querySelectorAll('.cxws-contact-list-label').forEach(e => e.remove());
+
+    if (lists.length > 0) {
+        const labelContainer = document.createElement('span');
+        labelContainer.className = 'cxws-contact-list-label';
+        labelContainer.style.marginLeft = '8px';
+        lists.forEach(listName => {
+            const lbl = document.createElement('span');
+            lbl.innerText = `📋 ${listName}`;
+            lbl.style.background = '#e1f7e6';
+            lbl.style.color = '#25d366';
+            lbl.style.borderRadius = '4px';
+            lbl.style.padding = '2px 6px';
+            lbl.style.marginRight = '4px';
+            lbl.style.fontSize = '11px';
+            labelContainer.appendChild(lbl);
+        });
+        let numberSpan = block.querySelector('span[dir="auto"]');
+        if (numberSpan) numberSpan.parentNode.appendChild(labelContainer);
+    }
+}
+
+/**
  * Injecte le bouton "Ajouter à une liste" à côté du numéro dans la fiche contact.
  * Affiche un sélecteur de liste lors du clic.
+ * Affiche aussi les labels des listes.
+ * Optimisé pour éviter les ralentissements.
  */
-function injectAddToListButtonOnContactInfo() {
+function injectAddToListButtonOnContactInfo(contactLists) {
     const infoBlocks = document.querySelectorAll('.x1c4vz4f.x3nfvp2.xuce83p.x1bft6iq.x1i7k8ik.xq9mrsl.x6s0dn4');
     infoBlocks.forEach(block => {
-        if (block.querySelector('.cxws-addtolist-btn')) return;
         let numberSpan = block.querySelector('span[dir="auto"]');
         if (!numberSpan) return;
         const numberText = numberSpan.textContent.trim();
         if (!/^\+?\d[\d\s\-]+$/.test(numberText)) return;
+        const normalized = normalizePhoneNumber(numberText);
 
-        // Crée le bouton
+        showContactListLabels(block, normalized, contactLists);
+
+        if (block.querySelector('.cxws-addtolist-btn')) return;
+
         const btn = document.createElement('button');
         btn.innerText = '➕ Ajouter à une liste';
         btn.className = 'cxws-addtolist-btn';
@@ -1017,18 +1057,14 @@ function injectAddToListButtonOnContactInfo() {
         btn.style.cursor = 'pointer';
         numberSpan.parentNode.appendChild(btn);
 
-        // Gestion du clic : affiche le sélecteur de liste et ajoute le numéro
-        btn.addEventListener('click', async (e) => {
+        btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            // Récupère les listes existantes
-            const { contactLists = {} } = await chrome.storage.local.get('contactLists');
             const listNames = Object.keys(contactLists);
             if (listNames.length === 0) {
                 alert('Aucune liste existante. Créez une liste d\'abord.');
                 return;
             }
 
-            // Crée le popup de sélection de liste
             let popup = document.getElementById('cxws-addtolist-popup');
             if (popup) popup.remove();
             popup = document.createElement('div');
@@ -1052,13 +1088,10 @@ function injectAddToListButtonOnContactInfo() {
             `;
             document.body.appendChild(popup);
 
-            // Annuler
             popup.querySelector('#cxws-cancel-add-btn').onclick = () => popup.remove();
 
-            // Ajouter à la liste sélectionnée
             popup.querySelector('#cxws-confirm-add-btn').onclick = async () => {
                 const selectedList = popup.querySelector('#cxws-list-select').value;
-                let normalized = normalizePhoneNumber(numberText);
                 let content = contactLists[selectedList] || '';
                 let numbers = content.split('\n').map(x => x.trim()).filter(x => x);
                 if (!numbers.includes(normalized)) {
@@ -1068,13 +1101,24 @@ function injectAddToListButtonOnContactInfo() {
                 }
                 popup.remove();
                 alert(`Numéro ${normalized} ajouté à la liste "${selectedList}"`);
+                showContactListLabels(block, normalized, contactLists);
             };
         });
     });
 }
 
+// Debounce pour limiter la fréquence d'injection
+let cxwsInjectTimeout = null;
+function debouncedInjectContactInfo() {
+    if (cxwsInjectTimeout) clearTimeout(cxwsInjectTimeout);
+    cxwsInjectTimeout = setTimeout(async () => {
+        const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+        injectAddToListButtonOnContactInfo(contactLists);
+    }, 300); // 300ms après la dernière mutation
+}
+
 // Observe les changements du DOM pour injecter le bouton à chaque affichage de fiche contact
 const cxwsContactInfoObserver = new MutationObserver(() => {
-    injectAddToListButtonOnContactInfo();
+    debouncedInjectContactInfo();
 });
 cxwsContactInfoObserver.observe(document.body, { childList: true, subtree: true });
