@@ -1,0 +1,645 @@
+/* ==========================================================================
+   Styles pour l'interface injectée de CX Sender
+   ========================================================================== */
+
+/* --- Variables de couleur pour la cohérence --- */
+:root {
+  --cx-primary: #00a884;
+  --cx-primary-dark: #008a69;
+  --cx-background-light: #f0f2f5;
+  --cx-background-white: #ffffff;
+  --cx-text-dark: #111b21;
+  --cx-text-light: #54656f;
+  --cx-border-color: #e9edef;
+  --cx-error-color: #d32f2f;
+  --cx-overlay-bg: rgba(0, 0, 0, 0.55);
+  --cx-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --cx-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* --- Styles globaux pour les éléments injectés --- */
+[id^="cx-"] {
+  box-sizing: border-box;
+  font-family: var(--cx-font-family);
+}
+
+/* ==========================================================================
+   Barre d'outils principale
+   ========================================================================== */
+
+#cx-sender-toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 60px;
+  background-color: var(--cx-background-light);
+  color: var(--cx-text-light);
+  display: flex;
+  align-items: center;
+  padding: 0 25px;
+  z-index: 10000;
+  border-bottom: 1px solid var(--cx-border-color);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#cx-sender-toolbar.cx-toolbar-hidden {
+  transform: translateY(-100%);
+}
+
+#cx-sender-toolbar.cx-toolbar-inactive {
+  filter: grayscale(90%);
+  background-color: #fdfdfd;
+}
+
+.cx-inactive-message {
+  color: var(--cx-text-light);
+  font-size: 16px;
+  font-weight: 500;
+  animation: pulse 2s infinite;
+}
+
+.cx-toolbar-left-content {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+}
+
+.cx-toolbar-brand {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--cx-text-dark);
+}
+
+.cx-toolbar-actions {
+  display: flex;
+  gap: 15px;
+}
+
+.cx-toolbar-btn {
+  background-color: var(--cx-primary);
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s, transform 0.1s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.cx-toolbar-btn:hover {
+  background-color: var(--cx-primary-dark);
+}
+
+.cx-toolbar-btn:active {
+  transform: scale(0.98);
+}
+
+#cx-toolbar-toggle-btn {
+  position: fixed;
+  right: 30px;
+  top: 15px;
+  z-index: 10001;
+  background: var(--cx-primary);
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--cx-shadow);
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+#cx-toolbar-toggle-btn:hover {
+  background-color: var(--cx-primary-dark);
+  transform: scale(1.05);
+}
+
+#cx-toolbar-toggle-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: white;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#cx-toolbar-toggle-btn.cx-toggled svg {
+  transform: rotate(180deg);
+}
+
+/* ==========================================================================
+   Styles communs pour toutes les fenêtres modales
+   ========================================================================== */
+
+[id$="-modal-overlay"] {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--cx-overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  z-index: 10002;
+}
+
+[id$="-modal-overlay"].cx-modal-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+[id$="-modal-overlay"].cx-modal-hidden [id$="-modal-content"] {
+  transform: scale(0.95);
+}
+
+[id$="-modal-content"] {
+  background-color: var(--cx-background-white);
+  border-radius: 8px;
+  box-shadow: var(--cx-shadow);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  width: 90%;
+  transition: transform 0.3s ease;
+  transform: scale(1);
+}
+
+[id$="-modal-header"] {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 25px;
+  border-bottom: 1px solid var(--cx-border-color);
+  flex-shrink: 0;
+}
+
+[id$="-modal-header"] h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--cx-text-dark);
+}
+
+[id$="-modal-close-btn"] {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: var(--cx-text-light);
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+[id$="-modal-close-btn"]:hover {
+  color: var(--cx-text-dark);
+}
+
+[id$="-modal-body"] {
+  padding: 25px;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+[id$="-modal-footer"] {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 15px 25px;
+  border-top: 1px solid var(--cx-border-color);
+  gap: 15px;
+  background-color: #fcfcfc;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  flex-shrink: 0;
+}
+
+/* --- Styles communs pour les formulaires dans les modales --- */
+.cx-modal-section {
+  margin-bottom: 20px;
+}
+
+.cx-modal-section:last-child {
+  margin-bottom: 0;
+}
+
+.cx-modal-section label,
+.cx-option-item label:first-child {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--cx-text-dark);
+}
+
+.cx-modal-section select,
+.cx-modal-section textarea,
+[id$="-modal-body"] input[type="text"],
+[id$="-modal-body"] input[type="number"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.cx-modal-section select:focus-visible,
+.cx-modal-section textarea:focus-visible,
+[id$="-modal-body"] input:focus-visible {
+  outline: none;
+  border-color: var(--cx-primary);
+  box-shadow: 0 0 0 3px rgba(0, 168, 132, 0.2);
+}
+
+.cx-modal-section textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+/* ==========================================================================
+   Styles spécifiques par modale
+   ========================================================================== */
+
+/* --- Modale: Envoi en masse --- */
+#cx-modal-content {
+  max-width: 600px;
+}
+
+#cx-modal-template-info {
+  font-size: 13px;
+  color: var(--cx-text-light);
+  margin-bottom: 8px;
+  min-height: 18px;
+}
+
+#cx-modal-status {
+  flex-grow: 1;
+  text-align: left;
+  color: var(--cx-text-light);
+  font-size: 14px;
+}
+
+#cx-modal-send-btn {
+  background-color: var(--cx-primary);
+  color: white;
+  border: none;
+  padding: 10px 25px;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#cx-modal-send-btn:disabled {
+  background-color: #b0b8be;
+  cursor: not-allowed;
+}
+
+/* --- Modales: Gestion des modèles & Listes de contacts --- */
+#cx-templates-modal-content,
+#cx-contact-lists-modal-content {
+  max-width: 850px;
+}
+
+#cx-templates-modal-body,
+#cx-contact-lists-modal-body {
+  display: flex;
+  gap: 25px;
+}
+
+#cx-templates-list-container,
+#cx-contact-lists-list-container {
+  flex: 1;
+  border-right: 1px solid var(--cx-border-color);
+  padding-right: 25px;
+  display: flex;
+  flex-direction: column;
+}
+
+#cx-template-editor-container,
+#cx-contact-list-editor-container {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+}
+
+#cx-templates-list-container h3,
+#cx-template-editor-container h3,
+#cx-contact-lists-list-container h3,
+#cx-contact-list-editor-container h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: var(--cx-text-dark);
+  font-size: 16px;
+}
+
+#cx-templates-list,
+#cx-contact-lists-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+#cx-templates-list li,
+#cx-contact-lists-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+#cx-templates-list li:hover,
+#cx-contact-lists-list li:hover {
+  background-color: var(--cx-background-light);
+}
+
+#cx-templates-list li.selected,
+#cx-contact-lists-list li.selected {
+  background-color: var(--cx-primary);
+  color: white;
+}
+
+#cx-templates-list li .delete-template,
+#cx-contact-lists-list li .delete-list {
+  background: none;
+  border: none;
+  color: var(--cx-error-color);
+  font-size: 20px;
+  cursor: pointer;
+  visibility: hidden;
+  opacity: 0;
+}
+
+#cx-templates-list li:hover .delete-template {
+  visibility: visible;
+  opacity: 1;
+}
+
+#cx-template-name-input,
+#cx-template-content-textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+  margin-bottom: 15px;
+}
+
+#cx-template-name-input[readonly] {
+    background-color: #f0f2f5;
+    cursor: not-allowed;
+}
+
+#cx-template-content-textarea {
+  flex-grow: 1;
+  resize: vertical;
+  min-height: 200px;
+}
+
+#cx-template-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+#cx-template-editor-actions button {
+  background-color: #00a884;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 25px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#cx-template-editor-actions button.secondary {
+  background-color: #e9edef;
+  color: #111b21;
+}
+
+/* --- Styles pour la modale de gestion des listes de contacts --- */
+
+#cx-contact-lists-modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background-color: rgba(0, 0, 0, 0.6); z-index: 10002;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 1; transition: opacity 0.3s ease;
+}
+#cx-contact-lists-modal-overlay.cx-modal-hidden { opacity: 0; pointer-events: none; }
+#cx-contact-lists-modal-content {
+  background-color: #fff; border-radius: 8px; width: 90%; max-width: 800px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3); display: flex; flex-direction: column; max-height: 90vh;
+}
+#cx-contact-lists-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 15px 25px; border-bottom: 1px solid #e9edef;
+}
+#cx-contact-lists-modal-header h2 { margin: 0; font-size: 20px; color: #111b21; }
+#cx-contact-lists-modal-close-btn {
+  background: none; border: none; font-size: 28px; cursor: pointer; color: #667781;
+}
+#cx-contact-lists-modal-body {
+  padding: 25px; overflow-y: auto; display: flex; gap: 25px; flex-grow: 1;
+}
+#cx-contact-lists-list-container {
+  flex: 1; border-right: 1px solid #e9edef; padding-right: 25px;
+  display: flex; flex-direction: column;
+}
+#cx-contact-list-editor-container { flex: 2; display: flex; flex-direction: column; }
+#cx-contact-lists-list-container h3, #cx-contact-list-editor-container h3 {
+  margin-top: 0; margin-bottom: 15px; color: #111b21; font-size: 16px;
+}
+#cx-contact-lists-list { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex-grow: 1; }
+#cx-contact-lists-list li {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px; cursor: pointer; border-radius: 6px; transition: background-color 0.2s;
+}
+#cx-contact-lists-list li:hover { background-color: #f0f2f5; }
+#cx-contact-lists-list li .delete-list {
+  background: none; border: none; color: #c62828; font-size: 20px; cursor: pointer;
+  visibility: hidden; opacity: 0; transition: opacity 0.2s;
+}
+#cx-contact-lists-list li:hover .delete-list { visibility: visible; opacity: 1; }
+#cx-contact-list-name-input, #cx-contact-list-content-textarea {
+  width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px;
+  font-size: 14px; box-sizing: border-box; margin-bottom: 15px;
+}
+#cx-contact-list-name-input[readonly] { background-color: #f0f2f5; cursor: not-allowed; }
+#cx-contact-list-content-textarea { flex-grow: 1; resize: vertical; min-height: 200px; }
+#cx-contact-list-editor-actions { display: flex; justify-content: flex-end; gap: 10px; }
+#cx-contact-list-editor-actions button {
+  background-color: #00a884; color: white; border: none; padding: 10px 20px;
+  border-radius: 25px; font-size: 14px; font-weight: bold; cursor: pointer;
+}
+#cx-contact-list-editor-actions button.secondary { background-color: #e9edef; color: #111b21; }
+
+/* --- Styles pour le bouton injecté dans le header du chat --- */
+
+#cx-add-to-list-btn {
+    position: relative;
+    background-color: #e9edef;
+    color: #54656f;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    font-size: 18px;
+    margin-left: 10px;
+    transition: background-color 0.2s;
+}
+
+#cx-add-to-list-btn:hover {
+    background-color: #dfe3e5;
+}
+
+/* --- Styles pour la modale d'ajout rapide à une liste --- */
+
+#cx-add-contact-modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background-color: rgba(0, 0, 0, 0.6); z-index: 10003;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 1; transition: opacity 0.3s ease;
+}
+#cx-add-contact-modal-overlay.cx-modal-hidden { opacity: 0; pointer-events: none; }
+#cx-add-contact-modal-content {
+  background-color: #fff; border-radius: 8px; width: 90%; max-width: 450px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3); display: flex; flex-direction: column;
+}
+#cx-add-contact-modal-header {
+  padding: 15px 25px; border-bottom: 1px solid #e9edef;
+  display: flex; justify-content: space-between; align-items: center;
+}
+#cx-add-contact-modal-header h2 {
+  margin: 0; font-size: 18px; color: #111b21;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#cx-add-contact-modal-header h2 strong { color: #00a884; }
+#cx-add-contact-modal-close-btn {
+  background: none; border: none; font-size: 28px; cursor: pointer; color: #667781;
+}
+#cx-add-contact-modal-body {
+  padding: 25px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.cx-add-contact-checkbox-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.cx-add-contact-checkbox-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-right: 12px;
+  cursor: pointer;
+}
+.cx-add-contact-checkbox-item label {
+  font-size: 16px;
+  cursor: pointer;
+}
+#cx-add-contact-modal-footer {
+  padding: 15px 25px; border-top: 1px solid #e9edef;
+  display: flex; justify-content: flex-end;
+}
+#cx-add-contact-save-btn {
+  background-color: #00a884; color: white; border: none; padding: 10px 25px;
+  border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+/* --- Styles for Options Modal --- */
+
+#cx-options-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 10002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+#cx-options-modal-overlay.cx-modal-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#cx-options-modal-content {
+  background-color: #fff;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 550px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+#cx-options-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 25px;
+  border-bottom: 1px solid #e9edef;
+}
+
+#cx-options-modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #111b21;
+}
+
+#cx-options-modal-close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: #667781;
+}
+
+#cx-options-modal-body {
+  padding: 25px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.cx-option-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px 20px;
+}
+
+.cx-option-item label:first-child {
+  font-weight: 600;
+  color:black}

@@ -566,6 +566,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 activationToken: activation.token,
                 userPhone: phoneNumber 
             });
+
+            // Recharge l'onglet WhatsApp Web pour activer la barre d'outils
+            const [whatsappTab] = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+            if (whatsappTab) {
+                chrome.tabs.reload(whatsappTab.id);
+                logToBackground('Onglet WhatsApp trouvé et rechargé pour activer la barre d\'outils.');
+            }
+
             showMainFeatures();
         } else {
             showError(activation.message);

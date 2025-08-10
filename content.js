@@ -263,3 +263,585 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Indispensable pour la réponse asynchrone
     }
 });
+
+// =================================================================================================
+// INJECTION DE L'INTERFACE UTILISATEUR SUR LA PAGE
+// =================================================================================================
+
+let attachmentsForCurrentSend = []; // Stocke les P.J. du modèle sélectionné pour l'envoi
+let currentTemplateAttachments = []; // Stocke les P.J. pour l'éditeur de modèle
+
+/**
+ * Crée et injecte la barre d'outils de l'extension dans la page WhatsApp Web.
+ */
+function injectToolbar(isActive) {
+    // Vérifie si les éléments ne sont pas déjà présents
+    if (document.getElementById('cx-sender-toolbar') || document.getElementById('cx-toolbar-toggle-btn')) {
+        return;
+    }
+
+    // 1. Crée la barre d'outils
+    const toolbar = document.createElement('div');
+    toolbar.id = 'cx-sender-toolbar';
+
+    if (isActive) {
+        toolbar.innerHTML = `
+            <div class="cx-toolbar-left-content">
+                <div class="cx-toolbar-brand">CX Sender</div>
+                <div class="cx-toolbar-actions">
+                    <button id="cx-send-bulk-btn" class="cx-toolbar-btn">🚀 Envoi en masse</button>
+                    <button id="cx-manage-templates-btn" class="cx-toolbar-btn">📋 Gérer les modèles</button>
+                    <button id="cx-settings-btn" class="cx-toolbar-btn">⚙️ Options</button>
+                </div>
+            </div>
+        `;
+    } else {
+        toolbar.classList.add('cx-toolbar-inactive');
+        toolbar.innerHTML = `
+            <div class="cx-toolbar-left-content">
+                <div class="cx-toolbar-brand">CX Sender</div>
+                <div class="cx-inactive-message">
+                    Veuillez cliquer sur l'icône de l'extension pour l'activer et utiliser ses fonctionnalités.
+                </div>
+            </div>
+        `;
+    }
+
+    // 2. Crée le bouton flottant pour afficher/masquer
+    const toggleBtn = document.createElement('button');
+    toggleBtn.id = 'cx-toolbar-toggle-btn';
+    toggleBtn.title = "Afficher/Masquer la barre d'outils";
+    toggleBtn.innerHTML = `
+            <svg viewBox="0 0 24 24">
+                <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"></path>
+            </svg>
+    `;
+
+    // 3. Injecte les éléments dans la page
+    document.body.prepend(toolbar);
+    document.body.prepend(toggleBtn);
+
+    // 4. Injecte la feuille de style
+    const styleLink = document.createElement('link');
+    styleLink.rel = 'stylesheet';
+    styleLink.type = 'text/css';
+    styleLink.href = chrome.runtime.getURL('injected-styles.css');
+    document.head.appendChild(styleLink);
+
+    // Ajoute la logique pour le bouton afficher/masquer.
+    // Il ne fait que basculer les classes, le CSS gère les animations.
+    toggleBtn.addEventListener('click', () => {
+        toolbar.classList.toggle('cx-toolbar-hidden');
+        toggleBtn.classList.toggle('cx-toggled');
+    });
+
+    if (isActive) {
+        // --- Activation des boutons de la barre d'outils ---
+        const bulkSendBtn = document.getElementById('cx-send-bulk-btn');
+        bulkSendBtn.addEventListener('click', openBulkSendModal);
+
+        const manageTemplatesBtn = document.getElementById('cx-manage-templates-btn');
+        manageTemplatesBtn.addEventListener('click', openTemplatesModal);
+
+        const settingsBtn = document.getElementById('cx-settings-btn');
+        settingsBtn.addEventListener('click', openOptionsModal);
+        console.log('CX Sender Toolbar (Active) a été injectée avec succès.');
+    } else {
+        console.log('CX Sender Toolbar (Inactive) a été injectée avec succès.');
+    }
+}
+
+/**
+ * Crée et injecte la fenêtre modale pour l'envoi en masse.
+ */
+function injectBulkSendModal() {
+    if (document.getElementById('cx-modal-overlay')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'cx-modal-overlay';
+    modal.classList.add('cx-modal-hidden');
+    modal.innerHTML = `
+        <div id="cx-modal-content">
+            <div id="cx-modal-header">
+                <h2>🚀 Envoi en masse</h2>
+                <button id="cx-modal-close-btn">&times;</button>
+            </div>
+            <div id="cx-modal-body">
+                <div class="cx-modal-section">
+                    <label>Modèles de message</label>
+                    <div id="cx-modal-template-info"></div>
+                    <select id="cx-modal-template-select"><option value="">Sélectionner un modèle</option></select>
+                    <textarea id="cx-modal-message" placeholder="Entrez votre message ici..."></textarea>
+                </div>
+                <div class="cx-modal-section">
+                    <label>Listes de contacts</label>
+                    <select id="cx-modal-contact-list-select"><option value="">Sélectionner une liste</option></select>
+                    <textarea id="cx-modal-contacts" placeholder="Copiez-collez les contacts, séparés par des virgules ou des sauts de ligne..."></textarea>
+                </div>
+            </div>
+            <div id="cx-modal-footer">
+                <div id="cx-modal-status"></div>
+                <button id="cx-modal-send-btn">Envoyer</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // --- Logique de la modale ---
+    const overlay = document.getElementById('cx-modal-overlay');
+    const closeBtn = document.getElementById('cx-modal-close-btn');
+    const sendBtn = document.getElementById('cx-modal-send-btn');
+
+    closeBtn.addEventListener('click', closeBulkSendModal);
+    overlay.addEventListener('click', (e) => {
+        if (e.target.id === 'cx-modal-overlay') {
+            closeBulkSendModal();
+        }
+    });
+
+    sendBtn.addEventListener('click', handleModalSend);
+
+    // Logique pour les listes déroulantes (templates et contacts)
+    document.getElementById('cx-modal-template-select').addEventListener('change', async (e) => {
+        const templateName = e.target.value;
+        const messageTextarea = document.getElementById('cx-modal-message');
+        const infoDiv = document.getElementById('cx-modal-template-info');
+        
+        attachmentsForCurrentSend = []; // Réinitialiser
+        infoDiv.textContent = '';
+
+        if (!templateName) {
+            messageTextarea.value = '';
+            return;
+        }
+        const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+        const template = messageTemplates[templateName];
+
+        if (typeof template === 'object' && template !== null) {
+            messageTextarea.value = template.message || '';
+            attachmentsForCurrentSend = template.attachments || [];
+            if (attachmentsForCurrentSend.length > 0) {
+                infoDiv.textContent = `Ce modèle inclut ${attachmentsForCurrentSend.length} pièce(s) jointe(s).`;
+            }
+        } else { // Ancien format (string)
+            messageTextarea.value = template || '';
+        }
+    });
+
+    document.getElementById('cx-modal-contact-list-select').addEventListener('change', async (e) => {
+        const listName = e.target.value;
+        const contactsTextarea = document.getElementById('cx-modal-contacts');
+        if (!listName) {
+            contactsTextarea.value = '';
+            return;
+        }
+        const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+        contactsTextarea.value = contactLists[listName] || '';
+    });
+}
+
+async function openBulkSendModal() {
+    const modal = document.getElementById('cx-modal-overlay');
+    if (modal) {
+        // Vider les infos du template précédent
+        document.getElementById('cx-modal-template-info').textContent = '';
+        // Charger les données fraîches à chaque ouverture
+        const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+        const templateSelect = document.getElementById('cx-modal-template-select');
+        templateSelect.innerHTML = '<option value="">Sélectionner un modèle</option>';
+        for (const name in messageTemplates) {
+            templateSelect.innerHTML += `<option value="${name}">${name}</option>`;
+        }
+
+        const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+        const contactListSelect = document.getElementById('cx-modal-contact-list-select');
+        contactListSelect.innerHTML = '<option value="">Sélectionner une liste</option>';
+        for (const name in contactLists) {
+            contactListSelect.innerHTML += `<option value="${name}">${name}</option>`;
+        }
+
+        modal.classList.remove('cx-modal-hidden');
+    }
+}
+
+function closeBulkSendModal() {
+    const modal = document.getElementById('cx-modal-overlay');
+    if (modal) modal.classList.add('cx-modal-hidden');
+}
+
+/**
+ * Crée et injecte la fenêtre modale pour la gestion des modèles.
+ */
+function injectTemplatesModal() {
+    if (document.getElementById('cx-templates-modal-overlay')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'cx-templates-modal-overlay';
+    modal.classList.add('cx-modal-hidden'); // Cachée par défaut
+    modal.innerHTML = `
+        <div id="cx-templates-modal-content">
+            <div id="cx-templates-modal-header">
+                <h2>📋 Gérer les modèles de message</h2>
+                <button id="cx-templates-modal-close-btn">&times;</button>
+            </div>
+            <div id="cx-templates-modal-body">
+                <div id="cx-templates-list-container">
+                    <h3>Modèles existants</h3>
+                    <ul id="cx-templates-list"></ul>
+                </div>
+                <div id="cx-template-editor-container">
+                    <h3>Éditeur de modèle</h3>
+                    <input type="text" id="cx-template-name-input" placeholder="Nom du modèle...">
+                    <textarea id="cx-template-content-textarea" placeholder="Contenu du message..."></textarea>
+                    <div id="cx-template-attachments-section">
+                        <div id="cx-template-attachment-preview">
+                            <!-- Les P.J. du modèle seront affichées ici -->
+                        </div>
+                        <div class="cx-template-attachment-actions">
+                            <button id="cx-template-attach-file-btn" class="secondary">Joindre des fichiers</button>
+                            <input type="file" id="cx-template-attachment-input" multiple style="display: none;">
+                        </div>
+                    </div>
+                    <div id="cx-template-editor-actions">
+                        <button id="cx-template-save-btn">Enregistrer</button>
+                        <button id="cx-template-new-btn" class="secondary">Nouveau</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // --- Logique de la modale des modèles ---
+    const overlay = document.getElementById('cx-templates-modal-overlay');
+    const closeBtn = document.getElementById('cx-templates-modal-close-btn');
+    const saveBtn = document.getElementById('cx-template-save-btn');
+    const newBtn = document.getElementById('cx-template-new-btn');
+    const templateList = document.getElementById('cx-templates-list');
+    const attachBtn = document.getElementById('cx-template-attach-file-btn');
+    const fileInput = document.getElementById('cx-template-attachment-input');
+
+    closeBtn.addEventListener('click', closeTemplatesModal);
+    overlay.addEventListener('click', (e) => {
+        if (e.target.id === 'cx-templates-modal-overlay') {
+            closeTemplatesModal();
+        }
+    });
+
+    newBtn.addEventListener('click', () => {
+        document.getElementById('cx-template-name-input').value = '';
+        document.getElementById('cx-template-content-textarea').value = '';
+        currentTemplateAttachments = [];
+        renderTemplateAttachments(currentTemplateAttachments);
+        document.getElementById('cx-template-name-input').readOnly = false;
+        document.getElementById('cx-template-name-input').focus();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const name = document.getElementById('cx-template-name-input').value.trim();
+        const content = document.getElementById('cx-template-content-textarea').value.trim();
+
+        if (!name || !content) {
+            alert('Le nom et le contenu du modèle ne peuvent pas être vides.');
+            return;
+        }
+
+        const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+        // Sauvegarder dans le nouveau format objet
+        messageTemplates[name] = {
+            message: content,
+            attachments: currentTemplateAttachments
+        };
+        await chrome.storage.local.set({ messageTemplates });
+        
+        await renderTemplatesInModal();
+        alert(`Modèle "${name}" enregistré !`);
+    });
+
+    templateList.addEventListener('click', async (e) => {
+        const target = e.target;
+        const listItem = target.closest('li');
+        if (!listItem) return;
+
+        const templateName = listItem.dataset.templateName;
+
+        if (target.classList.contains('delete-template')) {
+            if (confirm(`Êtes-vous sûr de vouloir supprimer le modèle "${templateName}" ?`)) {
+                const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+                delete messageTemplates[templateName];
+                await chrome.storage.local.set({ messageTemplates });
+                await renderTemplatesInModal();
+                if (document.getElementById('cx-template-name-input').value === templateName) {
+                    newBtn.click();
+                }
+            }
+        } else {
+            const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+            const template = messageTemplates[templateName];
+
+            document.getElementById('cx-template-name-input').value = templateName;
+            document.getElementById('cx-template-name-input').readOnly = true;
+
+            if (typeof template === 'object' && template !== null) {
+                document.getElementById('cx-template-content-textarea').value = template.message || '';
+                currentTemplateAttachments = template.attachments || [];
+            } else { // Gérer l'ancien format
+                document.getElementById('cx-template-content-textarea').value = template || '';
+                currentTemplateAttachments = [];
+            }
+            renderTemplateAttachments(currentTemplateAttachments);
+        }
+    });
+
+    attachBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async (event) => {
+        const files = Array.from(event.target.files);
+        if (!files.length) return;
+
+        const filePromises = files.map(file => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve({
+                    dataUrl: e.target.result,
+                    name: file.name,
+                    type: file.type
+                });
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        });
+
+        const newAttachments = await Promise.all(filePromises);
+        currentTemplateAttachments.push(...newAttachments);
+        renderTemplateAttachments(currentTemplateAttachments);
+        event.target.value = ''; // Allow re-selecting the same file
+    });
+}
+
+async function openTemplatesModal() {
+    const modal = document.getElementById('cx-templates-modal-overlay');
+    if (modal) {
+        await renderTemplatesInModal();
+        modal.classList.remove('cx-modal-hidden');
+    }
+}
+
+function closeTemplatesModal() {
+    const modal = document.getElementById('cx-templates-modal-overlay');
+    if (modal) modal.classList.add('cx-modal-hidden');
+}
+
+/**
+ * Affiche les pièces jointes dans l'éditeur de modèle.
+ * @param {Array<object>} attachments - Le tableau des pièces jointes.
+ */
+function renderTemplateAttachments(attachments) {
+    const previewContainer = document.getElementById('cx-template-attachment-preview');
+    previewContainer.innerHTML = '';
+    if (!attachments || attachments.length === 0) {
+        previewContainer.innerHTML = '<p class="no-attachments">Aucune pièce jointe.</p>';
+        return;
+    }
+
+    const list = document.createElement('ul');
+    attachments.forEach((att, index) => {
+        const listItem = document.createElement('li');
+        listItem.dataset.index = index;
+        listItem.innerHTML = `
+            <span class="attachment-name" title="${att.name}">${att.name}</span>
+            <button class="delete-attachment-btn" title="Supprimer">&times;</button>
+        `;
+        list.appendChild(listItem);
+    });
+    previewContainer.appendChild(list);
+
+    // Ajoute un seul écouteur d'événements sur le conteneur
+    list.addEventListener('click', (e) => {
+        if (e.target.classList.contains('delete-attachment-btn')) {
+            const item = e.target.closest('li');
+            const indexToRemove = parseInt(item.dataset.index, 10);
+            currentTemplateAttachments.splice(indexToRemove, 1);
+            renderTemplateAttachments(currentTemplateAttachments); // Re-render the list
+        }
+    });
+}
+
+async function renderTemplatesInModal() {
+    const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+    const listElement = document.getElementById('cx-templates-list');
+    listElement.innerHTML = '';
+
+    if (Object.keys(messageTemplates).length === 0) {
+        listElement.innerHTML = '<li>Aucun modèle enregistré.</li>';
+        return;
+    }
+
+    for (const name in messageTemplates) {
+        const template = messageTemplates[name];
+        const hasAttachments = (typeof template === 'object' && template.attachments && template.attachments.length > 0);
+
+        const listItem = document.createElement('li');
+        listItem.dataset.templateName = name;
+        listItem.innerHTML = `
+            <span>${name} ${hasAttachments ? '📎' : ''}</span>
+            <button class="delete-template" title="Supprimer">&times;</button>
+        `;
+        listElement.appendChild(listItem);
+    }
+}
+
+async function handleModalSend() {
+    const sendBtn = document.getElementById('cx-modal-send-btn');
+    const statusDiv = document.getElementById('cx-modal-status');
+    sendBtn.disabled = true;
+    statusDiv.textContent = 'Préparation de l\'envoi...';
+
+    const message = document.getElementById('cx-modal-message').value.trim();
+    const contacts = document.getElementById('cx-modal-contacts').value.split(/[\n,;]+/).map(c => c.trim()).filter(c => c);
+
+    if (contacts.length === 0 || !message) {
+        statusDiv.textContent = 'Veuillez fournir des contacts et un message.';
+        sendBtn.disabled = false;
+        return;
+    }
+
+    // Réutilisation de la logique d'envoi existante
+    const { config } = await chrome.storage.local.get({ config: { delayMin: 5 } });
+    const minDelaySeconds = config.delayMin;
+    const maxDelaySeconds = minDelaySeconds * 2;
+    let successCount = 0;
+    let errorDetails = [];
+
+    for (let i = 0; i < contacts.length; i++) {
+        const contact = contacts[i];
+        statusDiv.textContent = `Envoi ${i + 1}/${contacts.length} à ${contact}...`;
+        const result = await processSingleContact(contact, message, attachmentsForCurrentSend);
+        if (result.success) {
+            successCount++;
+        } else {
+            errorDetails.push(`${contact}: ${result.reason}`);
+        }
+        const randomDelay = Math.floor(Math.random() * (maxDelaySeconds - minDelaySeconds + 1) + minDelaySeconds) * 1000;
+        if (i < contacts.length - 1) await sleep(randomDelay);
+    }
+
+    statusDiv.textContent = `Terminé. ${successCount}/${contacts.length} envoyé(s).`;
+    sendBtn.disabled = false;
+}
+
+/**
+ * Crée et injecte la fenêtre modale pour les options.
+ */
+function injectOptionsModal() {
+    if (document.getElementById('cx-options-modal-overlay')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'cx-options-modal-overlay';
+    modal.classList.add('cx-modal-hidden');
+    modal.innerHTML = `
+        <div id="cx-options-modal-content">
+            <div id="cx-options-modal-header">
+                <h2>⚙️ Options</h2>
+                <button id="cx-options-modal-close-btn">&times;</button>
+            </div>
+            <div id="cx-options-modal-body">
+                <div class="cx-option-item">
+                    <label for="cx-delay-min">Délai minimum entre les messages (secondes)</label>
+                    <input type="number" id="cx-delay-min" min="1">
+                    <div class="cx-option-description">Un délai aléatoire est appliqué (entre la valeur min et le double de cette valeur) pour simuler un comportement humain.</div>
+                </div>
+                <div class="cx-option-item">
+                    <label for="cx-dev-mode-switch">Mode développeur</label>
+                    <label class="cx-switch">
+                        <input type="checkbox" id="cx-dev-mode-switch">
+                        <span class="cx-slider round"></span>
+                    </label>
+                    <div class="cx-option-description">Affiche les options de débogage comme le bouton des logs dans le popup.</div>
+                </div>
+            </div>
+            <div id="cx-options-modal-footer">
+                <div id="cx-options-save-status"></div>
+                <button id="cx-options-save-btn">Enregistrer</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // --- Logic ---
+    const overlay = document.getElementById('cx-options-modal-overlay');
+    const closeBtn = document.getElementById('cx-options-modal-close-btn');
+    const saveBtn = document.getElementById('cx-options-save-btn');
+
+    closeBtn.addEventListener('click', closeOptionsModal);
+    overlay.addEventListener('click', (e) => {
+        if (e.target.id === 'cx-options-modal-overlay') {
+            closeOptionsModal();
+        }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const delayMinInput = document.getElementById('cx-delay-min');
+        const devModeSwitch = document.getElementById('cx-dev-mode-switch');
+        const statusDiv = document.getElementById('cx-options-save-status');
+
+        const delayMin = parseInt(delayMinInput.value, 10);
+        const devMode = devModeSwitch.checked;
+
+        if (isNaN(delayMin) || delayMin < 1) {
+            statusDiv.textContent = 'Délai invalide (min 1s).';
+            statusDiv.style.color = '#c62828'; // Rouge
+            return;
+        }
+
+        const { config = {} } = await chrome.storage.local.get('config');
+        const newConfig = { ...config, delayMin, devMode };
+
+        await chrome.storage.local.set({ config: newConfig });
+
+        statusDiv.textContent = 'Options enregistrées !';
+        statusDiv.style.color = '#00a884'; // Vert
+        setTimeout(() => { statusDiv.textContent = ''; }, 2000);
+    });
+}
+
+async function openOptionsModal() {
+    const modal = document.getElementById('cx-options-modal-overlay');
+    if (modal) {
+        const { config } = await chrome.storage.local.get({ config: { delayMin: 5, devMode: false } });
+        document.getElementById('cx-delay-min').value = config.delayMin;
+        document.getElementById('cx-dev-mode-switch').checked = config.devMode;
+        modal.classList.remove('cx-modal-hidden');
+    }
+}
+
+function closeOptionsModal() {
+    const modal = document.getElementById('cx-options-modal-overlay');
+    if (modal) modal.classList.add('cx-modal-hidden');
+}
+
+/**
+ * Point d'entrée pour l'initialisation de l'interface injectée.
+ * Attend que l'interface de WhatsApp soit prête avant d'injecter la barre d'outils.
+ */
+async function initializeInjectedUI() {
+    try {
+        await waitForElement('#pane-side', 20000); // Attend un élément stable de l'UI de WA
+        const { activationToken } = await chrome.storage.local.get('activationToken');
+        const isActive = !!activationToken;
+
+        injectToolbar(isActive);
+
+        // N'injecte les modales que si l'extension est active
+        if (isActive) {
+            injectBulkSendModal();
+            injectTemplatesModal();
+            injectOptionsModal();
+        }
+    } catch (error) {
+        console.error('CX Sender: Impossible d\'injecter la barre d\'outils. L\'interface WhatsApp n\'a pas été trouvée.', error);
+    }
+}
+
+// Lance l'injection de l'UI
+initializeInjectedUI();
