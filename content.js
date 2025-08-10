@@ -1122,3 +1122,149 @@ const cxwsContactInfoObserver = new MutationObserver(() => {
     debouncedInjectContactInfo();
 });
 cxwsContactInfoObserver.observe(document.body, { childList: true, subtree: true });
+
+/**
+ * Injecte un bouton "Insérer un modèle" comme dernier bouton à droite dans la zone de saisie de message.
+ * Affine le visuel et affiche la liste au-dessus du bouton, centrée dans la fenêtre.
+ * Lors de l'insertion, remplit le champ message et prépare les pièces jointes (sans envoyer).
+ */
+function injectInsertTemplateButton() {
+    const inputToolbar = document.querySelector('div._ak1r');
+    if (!inputToolbar) return;
+    if (inputToolbar.querySelector('.cxws-insert-template-btn')) return;
+
+    // Trouve le bouton emoji pour positionner le bouton à droite
+    const emojiBtn = inputToolbar.querySelector('button[aria-label="Sélecteur d’expressions"]');
+    if (!emojiBtn) return;
+
+    // Crée le bouton
+    const btn = document.createElement('button');
+    btn.className = 'cxws-insert-template-btn';
+    btn.title = 'Insérer un modèle de message';
+    btn.style.background = 'none';
+    btn.style.border = 'none';
+    btn.style.cursor = 'pointer';
+    btn.style.marginLeft = '8px';
+    btn.style.marginRight = '4px';
+    btn.style.fontSize = '18px';
+    btn.style.padding = '4px 8px';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.innerHTML = `<span aria-hidden="true" style="color:#25d366;">📝</span>`;
+
+    // Ajoute le bouton comme dernier enfant du toolbar (à droite)
+    emojiBtn.parentNode.parentNode.appendChild(btn);
+
+    btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+        const templateNames = Object.keys(messageTemplates);
+        if (templateNames.length === 0) {
+            alert('Aucun modèle disponible.');
+            return;
+        }
+
+        // Supprime le popup existant
+        let popup = document.getElementById('cxws-insert-template-popup');
+        if (popup) popup.remove();
+
+        // Affiche le popup centré dans la fenêtre (pour éviter qu'il soit hors vue)
+        popup = document.createElement('div');
+        popup.id = 'cxws-insert-template-popup';
+        popup.style.position = 'fixed';
+        popup.style.left = '50%';
+        popup.style.top = '35%';
+        popup.style.transform = 'translate(-50%, -50%)';
+        popup.style.background = '#fff';
+        popup.style.border = '1px solid #25d366';
+        popup.style.borderRadius = '8px';
+        popup.style.padding = '16px 20px';
+        popup.style.zIndex = 9999;
+        popup.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
+        popup.style.minWidth = '220px';
+        popup.style.textAlign = 'center';
+
+        popup.innerHTML = `
+            <div style="margin-bottom:12px;font-weight:bold;color:#25d366;">Modèles de message</div>
+            <select id="cxws-template-select" style="width:100%;margin-bottom:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd;">
+                ${templateNames.map(name => `<option value="${name}">${name}</option>`).join('')}
+            </select>
+            <div>
+                <button id="cxws-insert-template-confirm-btn" style="background:#25d366;color:#fff;border:none;border-radius:4px;padding:6px 18px;cursor:pointer;font-size:14px;">Insérer</button>
+                <button id="cxws-insert-template-cancel-btn" style="margin-left:8px;background:#eee;color:#333;border:none;border-radius:4px;padding:6px 18px;cursor:pointer;font-size:14px;">Annuler</button>
+            </div>
+        `;
+        document.body.appendChild(popup);
+
+        popup.querySelector('#cxws-insert-template-cancel-btn').onclick = () => popup.remove();
+
+        popup.querySelector('#cxws-insert-template-confirm-btn').onclick = async () => {
+            const selectedName = popup.querySelector('#cxws-template-select').value;
+            const template = messageTemplates[selectedName];
+            let message = typeof template === 'object' ? template.message : template;
+            let attachments = typeof template === 'object' && template.attachments ? template.attachments : [];
+
+            // Remplit la barre d'envoi du message (pas la barre de recherche)
+            const inputBox = document.querySelector('div[contenteditable="true"][role="textbox"][aria-label*="message"]');
+            if (inputBox) {
+                inputBox.focus();
+                // Efface le contenu précédent
+                inputBox.innerHTML = '';
+                document.execCommand('insertText', false, message);
+                inputBox.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            // Ajoute les fichiers joints (prévisualisation, sans envoyer)
+            if (attachments.length > 0) {
+                // Trouve le bouton "Joindre"
+                const attachButtonIcon = document.querySelector("span[data-icon='clip'], span[data-icon='plus-rounded']");
+                const attachButton = attachButtonIcon ? attachButtonIcon.closest('button') : null;
+                if (attachButton) {
+                    attachButton.click();
+                    // Attend le bouton "media" ou "document"
+                    let fileType = attachments[0].type;
+                    let attachmentTypeIconSelector;
+                    if (fileType.startsWith('image/') || fileType.startsWith('video/')) {
+                        attachmentTypeIconSelector = "span[data-icon='media-filled-refreshed']";
+                    } else if (fileType.startsWith('audio/')) {
+                        attachmentTypeIconSelector = "span[data-icon='ic-headphones-filled']";
+                    } else {
+                        attachmentTypeIconSelector = "span[data-icon='document-filled-refreshed']";
+                    }
+                    try {
+                        const typeIcon = await waitForElement(attachmentTypeIconSelector, 3000);
+                        const typeButton = typeIcon.closest("li[role='button']");
+                        const fileInput = typeButton ? typeButton.querySelector("input[type='file']") : null;
+                        if (fileInput) {
+                            const dataTransfer = new DataTransfer();
+                            attachments.forEach(att => {
+                                const fileObj = dataURLtoFile(att.dataUrl, att.name);
+                                dataTransfer.items.add(fileObj);
+                            });
+                            fileInput.files = dataTransfer.files;
+                            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    } catch (err) {
+                        // ignore si pas de bouton trouvé
+                    }
+                }
+            }
+            popup.remove();
+        };
+    });
+}
+
+// Debounce pour limiter la fréquence d'injection du bouton
+let cxwsInsertBtnTimeout = null;
+function debouncedInjectInsertTemplateButton() {
+    if (cxwsInsertBtnTimeout) clearTimeout(cxwsInsertBtnTimeout);
+    cxwsInsertBtnTimeout = setTimeout(() => {
+        injectInsertTemplateButton();
+    }, 300);
+}
+
+// Observe les changements du DOM pour injecter le bouton dans la zone de saisie
+const cxwsInsertBtnObserver = new MutationObserver(() => {
+    debouncedInjectInsertTemplateButton();
+});
+cxwsInsertBtnObserver.observe(document.body, { childList: true, subtree: true });
