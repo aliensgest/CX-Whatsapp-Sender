@@ -345,6 +345,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const result = await chrome.storage.local.get('contactLists');
         const lists = result.contactLists || {};
         
+        // Debug: vérifier ce qui est stocké
+        console.log('Listes de contacts trouvées:', Object.keys(lists));
+        
         contactListSelect.innerHTML = '<option value="">Sélectionner une liste</option>';
 
         for (const name in lists) {
@@ -361,7 +364,15 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         const result = await chrome.storage.local.get('contactLists');
-        contactsInput.value = result.contactLists[listName] || '';
+        const contacts = result.contactLists && result.contactLists[listName] ? result.contactLists[listName] : '';
+        contactsInput.value = contacts;
+        
+        // Debug: vérifier si les contacts ont été récupérés
+        if (contacts) {
+            console.log(`Liste "${listName}" chargée avec ${contacts.split(/[\n,;]+/).filter(c => c.trim()).length} contacts`);
+        } else {
+            console.log(`Aucun contact trouvé pour la liste "${listName}"`);
+        }
     });
     saveContactListButton.addEventListener('click', async () => {
         const contacts = contactsInput.value.trim();

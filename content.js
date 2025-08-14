@@ -557,39 +557,15 @@ function injectBulkSendModal() {
     document.getElementById('cx-modal-contact-list-select').addEventListener('change', async (e) => {
         const listName = e.target.value;
         const contactsTextarea = document.getElementById('cx-modal-contacts');
-        if (isActive) {
-            // --- Activation des boutons de la barre d'outils ---
-            const bulkSendBtn = toolbar.querySelector('#cx-send-bulk-btn');
-            if (bulkSendBtn) bulkSendBtn.addEventListener('click', openBulkSendModal);
-
-            const manageTemplatesBtn = toolbar.querySelector('#cx-manage-templates-btn');
-            if (manageTemplatesBtn) manageTemplatesBtn.addEventListener('click', openTemplatesModal);
-
-            const manageListsBtn = toolbar.querySelector('#cx-manage-lists-btn');
-            if (manageListsBtn) manageListsBtn.addEventListener('click', openContactListsModal);
-
-            const settingsBtn = toolbar.querySelector('#cx-settings-btn');
-            if (settingsBtn) settingsBtn.addEventListener('click', openOptionsModal);
-
-            const copilotSettingsBtn = toolbar.querySelector('#cx-copilot-settings-btn');
-            if (copilotSettingsBtn) copilotSettingsBtn.addEventListener('click', () => {
-                const modal = document.getElementById('cx-copilot-settings-modal');
-                if (modal) modal.classList.remove('cx-modal-hidden');
-            });
-
-            console.log('CX Sender Toolbar (Active) a été injectée avec succès.');
-        } else {
-            console.log('CX Sender Toolbar (Inactive) a été injectée avec succès.');
+        
+        if (!listName) {
+            contactsTextarea.value = '';
+            return;
         }
-
+        
         const { contactLists = {} } = await chrome.storage.local.get('contactLists');
-        const contactListSelect = document.getElementById('cx-modal-contact-list-select');
-        contactListSelect.innerHTML = '<option value="">Sélectionner une liste</option>';
-        for (const name in contactLists) {
-            contactListSelect.innerHTML += `<option value="${name}">${name}</option>`;
-        }
-
-        modal.classList.remove('cx-modal-hidden');
+        const contacts = contactLists[listName] || '';
+        contactsTextarea.value = contacts;
     });
 }
 
