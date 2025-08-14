@@ -386,10 +386,10 @@ function injectToolbar(isActive) {
     // 2. Crée le bouton flottant pour afficher/masquer
     const toggleBtn = document.createElement('button');
     toggleBtn.id = 'cx-toolbar-toggle-btn';
-    toggleBtn.title = "Afficher/Masquer la barre d'outils";
+    toggleBtn.title = "Afficher/Masquer la barre d'outils CX Sender";
     toggleBtn.innerHTML = `
             <svg viewBox="0 0 24 24">
-                <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"></path>
+                <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"></path>
             </svg>
     `;
 
@@ -407,8 +407,17 @@ function injectToolbar(isActive) {
     // Ajoute la logique pour le bouton afficher/masquer.
     // Il ne fait que basculer les classes, le CSS gère les animations.
     toggleBtn.addEventListener('click', () => {
-        toolbar.classList.toggle('cx-toolbar-hidden');
-        toggleBtn.classList.toggle('cx-toggled');
+        const isHidden = toolbar.classList.toggle('cx-toolbar-hidden');
+        toggleBtn.classList.toggle('cx-toggled', isHidden);
+        
+        // Met à jour le titre du bouton selon l'état
+        if (isHidden) {
+            toggleBtn.title = "Afficher la barre d'outils CX Sender";
+        } else {
+            toggleBtn.title = "Masquer la barre d'outils CX Sender";
+        }
+        
+        console.log(`Barre d'outils CX ${isHidden ? 'masquée' : 'affichée'}`);
     });
 
     // Injecte les modales AVANT d'attacher les listeners pour garantir leur présence

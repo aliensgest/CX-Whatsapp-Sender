@@ -102,32 +102,43 @@
 
 #cx-toolbar-toggle-btn {
   position: fixed;
-  right: 30px;
-  top: 15px;
+  right: 20px;
+  top: 70px;
   z-index: 10001;
   background: var(--cx-primary);
   border: none;
-  width: 40px;
-  height: 40px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--cx-shadow);
-  transition: transform 0.2s, background-color 0.2s;
+  box-shadow: 0 2px 16px rgba(0, 168, 132, 0.3);
+  transition: all 0.3s ease;
+  font-size: 24px;
+  color: white;
 }
 
 #cx-toolbar-toggle-btn:hover {
   background-color: var(--cx-primary-dark);
-  transform: scale(1.05);
+  transform: scale(1.1);
+  box-shadow: 0 4px 20px rgba(0, 168, 132, 0.4);
 }
 
 #cx-toolbar-toggle-btn svg {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   fill: white;
   transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#cx-toolbar-toggle-btn.cx-toggled {
+  background-color: #666;
+}
+
+#cx-toolbar-toggle-btn.cx-toggled:hover {
+  background-color: #555;
 }
 
 #cx-toolbar-toggle-btn.cx-toggled svg {
