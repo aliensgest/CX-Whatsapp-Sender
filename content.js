@@ -608,19 +608,46 @@ async function handleModalSend() {
     statusDiv.style.color = '#00a884';
 
     try {
-        // Envoie le message via le content script
-        const response = await new Promise((resolve) => {
-            chrome.runtime.sendMessage({
-                action: "sendBulkMessage",
-                message: message,
-                contacts: contacts,
-                attachments: attachmentsForCurrentSend
-            }, resolve);
+        // Charger la configuration
+        const { config } = await chrome.storage.local.get({
+            config: {
+                delayMin: 5 // Valeur par défaut si non configuré
+            }
         });
+        const minDelaySeconds = config.delayMin;
+        const maxDelaySeconds = minDelaySeconds * 2;
 
-        statusDiv.textContent = response.status || 'Envoi terminé';
-        if (response.errors && response.errors.length > 0) {
-            console.warn('Erreurs lors de l\'envoi:', response.errors);
+        let successCount = 0;
+        let errorDetails = [];
+
+        // Traiter chaque contact
+        for (let i = 0; i < contacts.length; i++) {
+            const contact = contacts[i];
+            statusDiv.textContent = `Envoi ${i + 1}/${contacts.length} : ${contact}...`;
+            
+            const result = await processSingleContact(contact, message, attachmentsForCurrentSend);
+            if (result.success) {
+                successCount++;
+            } else {
+                errorDetails.push(`${contact}: ${result.reason}`);
+            }
+            
+            // Attendre entre les envois (sauf pour le dernier)
+            if (i < contacts.length - 1) {
+                const randomDelay = Math.floor(Math.random() * (maxDelaySeconds - minDelaySeconds + 1) + minDelaySeconds) * 1000;
+                console.log(`Waiting for ${randomDelay / 1000}s before next contact...`);
+                await sleep(randomDelay);
+            }
+        }
+
+        // Afficher le résultat final
+        if (errorDetails.length > 0) {
+            statusDiv.innerHTML = `Envoi terminé : ${successCount}/${contacts.length} réussis.<br>Échecs: ${errorDetails.length}`;
+            statusDiv.style.color = '#f57c00';
+            console.warn('Erreurs lors de l\'envoi:', errorDetails);
+        } else {
+            statusDiv.textContent = `Envoi terminé avec succès : ${successCount}/${contacts.length} messages envoyés.`;
+            statusDiv.style.color = '#00a884';
         }
     } catch (error) {
         console.error('Erreur lors de l\'envoi en masse:', error);
