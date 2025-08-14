@@ -634,7 +634,7 @@
 /* --- Boîte principale du copilote --- */
 #cx-copilot-box {
   position: fixed;
-  bottom: 150px; /* Au-dessus du bouton suggestions (80px + 60px de hauteur du bouton + 10px de marge) */
+  bottom: 80px; /* Maintenant en bas - ancienne position du bouton suggestions */
   left: 20px; /* Même côté que le bouton suggestions */
   width: 320px;
   background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
@@ -774,7 +774,7 @@
 /* --- Bouton de suggestions flottant --- */
 #cx-copilot-suggestions-btn {
   position: fixed;
-  bottom: 80px; /* Plus haut pour éviter la barre de saisie */
+  bottom: 150px; /* Maintenant en haut - ancienne position du box copilot */
   left: 20px;
   background: linear-gradient(135deg, #00a884 0%, #00d4aa 100%);
   color: white;
@@ -1078,13 +1078,13 @@
 @media (max-width: 768px) {
   #cx-copilot-box {
     width: calc(100% - 40px);
-    bottom: 150px; /* Au-dessus du bouton suggestions sur mobile */
+    bottom: 80px; /* Maintenant en bas sur mobile */
     left: 20px;
     right: 20px;
   }
   
   #cx-copilot-suggestions-btn {
-    bottom: 80px;
+    bottom: 150px; /* Maintenant en haut sur mobile */
     left: 20px;
     padding: 10px 16px;
     font-size: 13px;
