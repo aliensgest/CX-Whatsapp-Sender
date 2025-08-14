@@ -272,6 +272,78 @@ let attachmentsForCurrentSend = []; // Stocke les P.J. du modèle sélectionné 
 let currentTemplateAttachments = []; // Stocke les P.J. pour l'éditeur de modèle
 
 /**
+ * Ouvre la modale d'envoi en masse.
+ */
+async function openBulkSendModal() {
+    const modal = document.getElementById('cx-modal-overlay');
+    if (modal) {
+        // Vider les infos du template précédent
+        document.getElementById('cx-modal-template-info').textContent = '';
+        // Charger les données fraîches à chaque ouverture
+        const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+        const templateSelect = document.getElementById('cx-modal-template-select');
+        templateSelect.innerHTML = '<option value="">Sélectionner un modèle</option>';
+        for (const name in messageTemplates) {
+            templateSelect.innerHTML += `<option value="${name}">${name}</option>`;
+        }
+
+        const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+        const contactListSelect = document.getElementById('cx-modal-contact-list-select');
+        contactListSelect.innerHTML = '<option value="">Sélectionner une liste</option>';
+        for (const name in contactLists) {
+            contactListSelect.innerHTML += `<option value="${name}">${name}</option>`;
+        }
+
+        modal.style.display = 'flex';
+        modal.classList.remove('cx-modal-hidden');
+    }
+}
+
+async function openTemplatesModal() {
+    console.log('openTemplatesModal called');
+    const modal = document.getElementById('cx-templates-modal-overlay');
+    console.log('Templates modal found:', modal);
+    if (modal) {
+        await renderTemplatesInModal();
+        modal.style.display = 'flex';
+        modal.classList.remove('cx-modal-hidden');
+        console.log('Templates modal opened, display:', modal.style.display, 'classes:', modal.className);
+    } else {
+        console.error('Templates modal not found in DOM');
+    }
+}
+
+async function openContactListsModal() {
+    console.log('openContactListsModal called');
+    const modal = document.getElementById('cx-contact-lists-modal-overlay');
+    console.log('Contact lists modal found:', modal);
+    if (modal) {
+        await renderContactListsInModal();
+        modal.style.display = 'flex';
+        modal.classList.remove('cx-modal-hidden');
+        console.log('Contact lists modal opened, display:', modal.style.display, 'classes:', modal.className);
+    } else {
+        console.error('Contact lists modal not found in DOM');
+    }
+}
+
+async function openOptionsModal() {
+    console.log('openOptionsModal called');
+    const modal = document.getElementById('cx-options-modal-overlay');
+    console.log('Options modal found:', modal);
+    if (modal) {
+        const { config } = await chrome.storage.local.get({ config: { delayMin: 5, devMode: false } });
+        document.getElementById('cx-delay-min').value = config.delayMin;
+        document.getElementById('cx-dev-mode-switch').checked = config.devMode;
+        modal.style.display = 'flex';
+        modal.classList.remove('cx-modal-hidden');
+        console.log('Options modal opened, display:', modal.style.display, 'classes:', modal.className);
+    } else {
+        console.error('Options modal not found in DOM');
+    }
+}
+
+/**
  * Crée et injecte la barre d'outils de l'extension dans la page WhatsApp Web.
  */
 function injectToolbar(isActive) {
@@ -283,6 +355,8 @@ function injectToolbar(isActive) {
     // 1. Crée la barre d'outils
     const toolbar = document.createElement('div');
     toolbar.id = 'cx-sender-toolbar';
+    toolbar.style.zIndex = '10050';
+    toolbar.style.pointerEvents = 'auto';
 
     if (isActive) {
         toolbar.innerHTML = `
@@ -293,6 +367,7 @@ function injectToolbar(isActive) {
                     <button id="cx-manage-templates-btn" class="cx-toolbar-btn">📋 Gérer les modèles</button>
                     <button id="cx-manage-lists-btn" class="cx-toolbar-btn">👥 Gérer les listes</button>
                     <button id="cx-settings-btn" class="cx-toolbar-btn">⚙️ Options</button>
+                    <button id="cx-copilot-settings-btn" class="cx-toolbar-btn">🤖 Paramètres Copilote</button>
                 </div>
             </div>
         `;
@@ -336,21 +411,66 @@ function injectToolbar(isActive) {
         toggleBtn.classList.toggle('cx-toggled');
     });
 
+    // Injecte les modales AVANT d'attacher les listeners pour garantir leur présence
     if (isActive) {
-        // --- Activation des boutons de la barre d'outils ---
-        const bulkSendBtn = document.getElementById('cx-send-bulk-btn');
-        bulkSendBtn.addEventListener('click', openBulkSendModal);
+        if (!document.getElementById('cx-modal-overlay')) {
+            console.log('Injecting bulk send modal');
+            injectBulkSendModal();
+        }
+        if (!document.getElementById('cx-templates-modal-overlay')) {
+            console.log('Injecting templates modal');
+            injectTemplatesModal();
+        }
+        if (!document.getElementById('cx-contact-lists-modal-overlay')) {
+            console.log('Injecting contact lists modal');
+            injectContactListsModal();
+        }
+        if (!document.getElementById('cx-options-modal-overlay')) {
+            console.log('Injecting options modal');
+            injectOptionsModal();
+        }
+        if (!document.getElementById('cx-copilot-settings-modal')) {
+            console.log('Injecting copilot settings modal');
+            injectCopilotSettingsModal();
+        }
 
-        const manageTemplatesBtn = document.getElementById('cx-manage-templates-btn');
-        manageTemplatesBtn.addEventListener('click', openTemplatesModal);
+        const bulkSendBtn = toolbar.querySelector('#cx-send-bulk-btn');
+        if (bulkSendBtn) bulkSendBtn.addEventListener('click', openBulkSendModal);
 
-        const manageListsBtn = document.getElementById('cx-manage-lists-btn');
-        manageListsBtn.addEventListener('click', () => {
-            openContactListsModal();
+        const manageTemplatesBtn = toolbar.querySelector('#cx-manage-templates-btn');
+        if (manageTemplatesBtn) {
+            console.log('Adding event listener to manage templates button');
+            manageTemplatesBtn.addEventListener('click', openTemplatesModal);
+        } else {
+            console.error('Manage templates button not found');
+        }
+
+        const manageListsBtn = toolbar.querySelector('#cx-manage-lists-btn');
+        if (manageListsBtn) {
+            console.log('Adding event listener to manage lists button');
+            manageListsBtn.addEventListener('click', openContactListsModal);
+        } else {
+            console.error('Manage lists button not found');
+        }
+
+        const settingsBtn = toolbar.querySelector('#cx-settings-btn');
+        if (settingsBtn) {
+            console.log('Adding event listener to settings button');
+            settingsBtn.addEventListener('click', openOptionsModal);
+        } else {
+            console.error('Settings button not found');
+        }
+
+        const copilotSettingsBtn = toolbar.querySelector('#cx-copilot-settings-btn');
+        if (copilotSettingsBtn) copilotSettingsBtn.addEventListener('click', () => {
+            const modal = document.getElementById('cx-copilot-settings-modal');
+            if (modal) {
+                modal.classList.toggle('cx-modal-hidden');
+                console.log('Copilot Settings Modal state:', modal.classList.contains('cx-modal-hidden') ? 'Hidden' : 'Visible');
+            } else {
+                console.error('Copilot Settings Modal not found in the DOM.');
+            }
         });
-
-        const settingsBtn = document.getElementById('cx-settings-btn');
-        settingsBtn.addEventListener('click', openOptionsModal);
         console.log('CX Sender Toolbar (Active) a été injectée avec succès.');
     } else {
         console.log('CX Sender Toolbar (Inactive) a été injectée avec succès.');
@@ -437,26 +557,29 @@ function injectBulkSendModal() {
     document.getElementById('cx-modal-contact-list-select').addEventListener('change', async (e) => {
         const listName = e.target.value;
         const contactsTextarea = document.getElementById('cx-modal-contacts');
-        if (!listName) {
-            contactsTextarea.value = '';
-            return;
-        }
-        const { contactLists = {} } = await chrome.storage.local.get('contactLists');
-        contactsTextarea.value = contactLists[listName] || '';
-    });
-}
+        if (isActive) {
+            // --- Activation des boutons de la barre d'outils ---
+            const bulkSendBtn = toolbar.querySelector('#cx-send-bulk-btn');
+            if (bulkSendBtn) bulkSendBtn.addEventListener('click', openBulkSendModal);
 
-async function openBulkSendModal() {
-    const modal = document.getElementById('cx-modal-overlay');
-    if (modal) {
-        // Vider les infos du template précédent
-        document.getElementById('cx-modal-template-info').textContent = '';
-        // Charger les données fraîches à chaque ouverture
-        const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
-        const templateSelect = document.getElementById('cx-modal-template-select');
-        templateSelect.innerHTML = '<option value="">Sélectionner un modèle</option>';
-        for (const name in messageTemplates) {
-            templateSelect.innerHTML += `<option value="${name}">${name}</option>`;
+            const manageTemplatesBtn = toolbar.querySelector('#cx-manage-templates-btn');
+            if (manageTemplatesBtn) manageTemplatesBtn.addEventListener('click', openTemplatesModal);
+
+            const manageListsBtn = toolbar.querySelector('#cx-manage-lists-btn');
+            if (manageListsBtn) manageListsBtn.addEventListener('click', openContactListsModal);
+
+            const settingsBtn = toolbar.querySelector('#cx-settings-btn');
+            if (settingsBtn) settingsBtn.addEventListener('click', openOptionsModal);
+
+            const copilotSettingsBtn = toolbar.querySelector('#cx-copilot-settings-btn');
+            if (copilotSettingsBtn) copilotSettingsBtn.addEventListener('click', () => {
+                const modal = document.getElementById('cx-copilot-settings-modal');
+                if (modal) modal.classList.remove('cx-modal-hidden');
+            });
+
+            console.log('CX Sender Toolbar (Active) a été injectée avec succès.');
+        } else {
+            console.log('CX Sender Toolbar (Inactive) a été injectée avec succès.');
         }
 
         const { contactLists = {} } = await chrome.storage.local.get('contactLists');
@@ -467,9 +590,75 @@ async function openBulkSendModal() {
         }
 
         modal.classList.remove('cx-modal-hidden');
+    });
+}
+
+/**
+ * Gère l'envoi en masse depuis la modale.
+ */
+async function handleModalSend() {
+    const messageTextarea = document.getElementById('cx-modal-message');
+    const contactsTextarea = document.getElementById('cx-modal-contacts');
+    const statusDiv = document.getElementById('cx-modal-status');
+    const sendBtn = document.getElementById('cx-modal-send-btn');
+
+    const message = messageTextarea.value.trim();
+    const contactsText = contactsTextarea.value.trim();
+
+    if (!message && attachmentsForCurrentSend.length === 0) {
+        statusDiv.textContent = 'Veuillez saisir un message ou sélectionner un modèle avec des pièces jointes.';
+        statusDiv.style.color = '#d32f2f';
+        return;
+    }
+
+    if (!contactsText) {
+        statusDiv.textContent = 'Veuillez saisir des contacts.';
+        statusDiv.style.color = '#d32f2f';
+        return;
+    }
+
+    // Parse les contacts
+    const contacts = contactsText.split(/[,\n]/).map(c => c.trim()).filter(c => c);
+    if (contacts.length === 0) {
+        statusDiv.textContent = 'Aucun contact valide trouvé.';
+        statusDiv.style.color = '#d32f2f';
+        return;
+    }
+
+    // Désactive le bouton et affiche le statut
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Envoi en cours...';
+    statusDiv.textContent = `Envoi vers ${contacts.length} contact(s)...`;
+    statusDiv.style.color = '#00a884';
+
+    try {
+        // Envoie le message via le content script
+        const response = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({
+                action: "sendBulkMessage",
+                message: message,
+                contacts: contacts,
+                attachments: attachmentsForCurrentSend
+            }, resolve);
+        });
+
+        statusDiv.textContent = response.status || 'Envoi terminé';
+        if (response.errors && response.errors.length > 0) {
+            console.warn('Erreurs lors de l\'envoi:', response.errors);
+        }
+    } catch (error) {
+        console.error('Erreur lors de l\'envoi en masse:', error);
+        statusDiv.textContent = 'Erreur lors de l\'envoi: ' + error.message;
+        statusDiv.style.color = '#d32f2f';
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Envoyer';
     }
 }
 
+/**
+ * Ferme la modale d'envoi en masse.
+ */
 function closeBulkSendModal() {
     const modal = document.getElementById('cx-modal-overlay');
     if (modal) modal.classList.add('cx-modal-hidden');
@@ -625,6 +814,89 @@ function injectTemplatesModal() {
     });
 }
 
+/**
+ * Affiche la liste des modèles dans la modale.
+ */
+async function renderTemplatesInModal() {
+    const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+    const listElement = document.getElementById('cx-templates-list');
+    if (!listElement) return;
+
+    listElement.innerHTML = '';
+
+    if (Object.keys(messageTemplates).length === 0) {
+        listElement.innerHTML = '<li>Aucun modèle.</li>';
+        return;
+    }
+
+    for (const name in messageTemplates) {
+        const template = messageTemplates[name];
+        const listItem = document.createElement('li');
+        listItem.dataset.templateName = name;
+        
+        let attachmentInfo = '';
+        if (typeof template === 'object' && template.attachments && template.attachments.length > 0) {
+            attachmentInfo = ` (${template.attachments.length} pièce(s) jointe(s))`;
+        }
+        
+        listItem.innerHTML = `<span>${name}${attachmentInfo}</span><button class="delete-template" title="Supprimer">&times;</button>`;
+        listElement.appendChild(listItem);
+    }
+}
+
+/**
+ * Affiche la liste des contacts dans la modale.
+ */
+async function renderContactListsInModal() {
+    const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+    const listElement = document.getElementById('cx-contact-lists-list');
+    if (!listElement) return;
+
+    const currentSelected = listElement.querySelector('li.selected')?.dataset.listName;
+    listElement.innerHTML = '';
+
+    if (Object.keys(contactLists).length === 0) {
+        listElement.innerHTML = '<li>Aucune liste.</li>';
+        return;
+    }
+
+    for (const name in contactLists) {
+        const listItem = document.createElement('li');
+        listItem.dataset.listName = name;
+        listItem.innerHTML = `<span>${name}</span><button class="delete-list" title="Supprimer">&times;</button>`;
+        if (name === currentSelected) {
+            listItem.classList.add('selected');
+        }
+        listElement.appendChild(listItem);
+    }
+}
+
+/**
+ * Affiche l'aperçu des pièces jointes du modèle.
+ */
+function renderTemplateAttachments(attachments) {
+    const previewContainer = document.getElementById('cx-template-attachment-preview');
+    if (!previewContainer) return;
+
+    previewContainer.innerHTML = '';
+
+    attachments.forEach((attachment, index) => {
+        const attachmentDiv = document.createElement('div');
+        attachmentDiv.className = 'cx-attachment-item';
+        attachmentDiv.innerHTML = `
+            <span class="cx-attachment-name">${attachment.name}</span>
+            <button class="cx-attachment-remove" data-index="${index}">&times;</button>
+        `;
+        previewContainer.appendChild(attachmentDiv);
+
+        // Ajouter l'événement de suppression
+        attachmentDiv.querySelector('.cx-attachment-remove').addEventListener('click', () => {
+            currentTemplateAttachments.splice(index, 1);
+            renderTemplateAttachments(currentTemplateAttachments);
+        });
+    });
+}
+
 async function openTemplatesModal() {
     const modal = document.getElementById('cx-templates-modal-overlay');
     if (modal) {
@@ -636,104 +908,6 @@ async function openTemplatesModal() {
 function closeTemplatesModal() {
     const modal = document.getElementById('cx-templates-modal-overlay');
     if (modal) modal.classList.add('cx-modal-hidden');
-}
-
-/**
- * Affiche les pièces jointes dans l'éditeur de modèle.
- * @param {Array<object>} attachments - Le tableau des pièces jointes.
- */
-function renderTemplateAttachments(attachments) {
-    const previewContainer = document.getElementById('cx-template-attachment-preview');
-    previewContainer.innerHTML = '';
-    if (!attachments || attachments.length === 0) {
-        previewContainer.innerHTML = '<p class="no-attachments">Aucune pièce jointe.</p>';
-        return;
-    }
-
-    const list = document.createElement('ul');
-    attachments.forEach((att, index) => {
-        const listItem = document.createElement('li');
-        listItem.dataset.index = index;
-        listItem.innerHTML = `
-            <span class="attachment-name" title="${att.name}">${att.name}</span>
-            <button class="delete-attachment-btn" title="Supprimer">&times;</button>
-        `;
-        list.appendChild(listItem);
-    });
-    previewContainer.appendChild(list);
-
-    // Ajoute un seul écouteur d'événements sur le conteneur
-    list.addEventListener('click', (e) => {
-        if (e.target.classList.contains('delete-attachment-btn')) {
-            const item = e.target.closest('li');
-            const indexToRemove = parseInt(item.dataset.index, 10);
-            currentTemplateAttachments.splice(indexToRemove, 1);
-            renderTemplateAttachments(currentTemplateAttachments); // Re-render the list
-        }
-    });
-}
-
-async function renderTemplatesInModal() {
-    const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
-    const listElement = document.getElementById('cx-templates-list');
-    listElement.innerHTML = '';
-
-    if (Object.keys(messageTemplates).length === 0) {
-        listElement.innerHTML = '<li>Aucun modèle enregistré.</li>';
-        return;
-    }
-
-    for (const name in messageTemplates) {
-        const template = messageTemplates[name];
-        const hasAttachments = (typeof template === 'object' && template.attachments && template.attachments.length > 0);
-
-        const listItem = document.createElement('li');
-        listItem.dataset.templateName = name;
-        listItem.innerHTML = `
-            <span>${name} ${hasAttachments ? '📎' : ''}</span>
-            <button class="delete-template" title="Supprimer">&times;</button>
-        `;
-        listElement.appendChild(listItem);
-    }
-}
-
-async function handleModalSend() {
-    const sendBtn = document.getElementById('cx-modal-send-btn');
-    const statusDiv = document.getElementById('cx-modal-status');
-    sendBtn.disabled = true;
-    statusDiv.textContent = 'Préparation de l\'envoi...';
-
-    const message = document.getElementById('cx-modal-message').value.trim();
-    const contacts = document.getElementById('cx-modal-contacts').value.split(/[\n,;]+/).map(c => c.trim()).filter(c => c);
-
-    if (contacts.length === 0 || !message) {
-        statusDiv.textContent = 'Veuillez fournir des contacts et un message.';
-        sendBtn.disabled = false;
-        return;
-    }
-
-    // Réutilisation de la logique d'envoi existante
-    const { config } = await chrome.storage.local.get({ config: { delayMin: 5 } });
-    const minDelaySeconds = config.delayMin;
-    const maxDelaySeconds = minDelaySeconds * 2;
-    let successCount = 0;
-    let errorDetails = [];
-
-    for (let i = 0; i < contacts.length; i++) {
-        const contact = contacts[i];
-        statusDiv.textContent = `Envoi ${i + 1}/${contacts.length} à ${contact}...`;
-        const result = await processSingleContact(contact, message, attachmentsForCurrentSend);
-        if (result.success) {
-            successCount++;
-        } else {
-            errorDetails.push(`${contact}: ${result.reason}`);
-        }
-        const randomDelay = Math.floor(Math.random() * (maxDelaySeconds - minDelaySeconds + 1) + minDelaySeconds) * 1000;
-        if (i < contacts.length - 1) await sleep(randomDelay);
-    }
-
-    statusDiv.textContent = `Terminé. ${successCount}/${contacts.length} envoyé(s).`;
-    sendBtn.disabled = false;
 }
 
 /**
@@ -961,13 +1135,16 @@ async function initializeInjectedUI() {
         const isActive = !!activationToken;
 
         injectToolbar(isActive);
-
-        // N'injecte les modales que si l'extension est active
+        // Injecte les modales juste après la toolbar pour garantir leur présence avant l'ajout des listeners
         if (isActive) {
             injectBulkSendModal();
             injectTemplatesModal();
             injectContactListsModal();
             injectOptionsModal();
+            injectCopilotSettingsModal();
+            
+            // Initialiser l'observer pour l'interface copilote
+            initializeCopilotObserver();
         }
     } catch (error) {
         console.error('CX Sender: Impossible d\'injecter la barre d\'outils. L\'interface WhatsApp n\'a pas été trouvée.', error);
@@ -1055,6 +1232,8 @@ function injectAddToListButtonOnContactInfo(contactLists) {
         btn.style.padding = '2px 8px';
         btn.style.fontSize = '12px';
         btn.style.cursor = 'pointer';
+        btn.style.zIndex = '10010';
+        btn.style.pointerEvents = 'auto';
         numberSpan.parentNode.appendChild(btn);
 
         btn.addEventListener('click', (e) => {
@@ -1150,6 +1329,8 @@ function injectInsertTemplateButton() {
     btn.style.padding = '4px 8px';
     btn.style.display = 'flex';
     btn.style.alignItems = 'center';
+    btn.style.zIndex = '10010';
+    btn.style.pointerEvents = 'auto';
     btn.innerHTML = `<span aria-hidden="true" style="color:#25d366;">📝</span>`;
 
     // Ajoute le bouton comme dernier enfant du toolbar (à droite)
@@ -1268,3 +1449,890 @@ const cxwsInsertBtnObserver = new MutationObserver(() => {
     debouncedInjectInsertTemplateButton();
 });
 cxwsInsertBtnObserver.observe(document.body, { childList: true, subtree: true });
+
+// Fonction pour injecter la modale de configuration du copilote
+function injectCopilotSettingsModal() {
+    if (document.getElementById('cx-copilot-settings-modal')) return;
+
+    // Ajout de logs pour le débogage
+    console.log('Injecting Copilot Settings Modal...');
+
+    const modal = document.createElement('div');
+    modal.id = 'cx-copilot-settings-modal';
+    modal.className = 'cx-modal-hidden';
+    modal.innerHTML = `
+        <div id="cx-copilot-settings-content">
+            <div id="cx-copilot-settings-header">
+                <h2>🤖 Paramètres Copilote</h2>
+                <button id="cx-copilot-settings-close-btn">&times;</button>
+            </div>
+            <div id="cx-copilot-settings-body">
+                <div class="cx-modal-section">
+                    <label for="cx-api-key">Clé API (Gemini/GPT)</label>
+                    <input type="password" id="cx-api-key" placeholder="Entrez votre clé API..." autocomplete="off">
+                </div>
+                <div class="cx-modal-section">
+                    <label for="cx-custom-instructions">Instructions personnalisées</label>
+                    <textarea id="cx-custom-instructions" placeholder="Ajoutez vos instructions ici..."></textarea>
+                </div>
+            </div>
+            <div id="cx-copilot-settings-footer">
+                <button id="cx-copilot-settings-save-btn">Enregistrer</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Gestion des événements pour la modale
+    const closeBtn = document.getElementById('cx-copilot-settings-close-btn');
+    const saveBtn = document.getElementById('cx-copilot-settings-save-btn');
+
+    closeBtn.addEventListener('click', () => {
+        modal.classList.add('cx-modal-hidden');
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const apiKey = document.getElementById('cx-api-key').value.trim();
+        const customInstructions = document.getElementById('cx-custom-instructions').value.trim();
+        await chrome.storage.local.set({
+            copilotConfig: { apiKey, customInstructions }
+        });
+        alert('Paramètres enregistrés avec succès !');
+        modal.classList.add('cx-modal-hidden');
+    });
+
+    // Pré-remplir les champs avec la config enregistrée à chaque ouverture
+    modal.addEventListener('transitionend', async () => {
+        if (!modal.classList.contains('cx-modal-hidden')) {
+            const { copilotConfig = {} } = await chrome.storage.local.get('copilotConfig');
+            document.getElementById('cx-api-key').value = copilotConfig.apiKey || '';
+            document.getElementById('cx-custom-instructions').value = copilotConfig.customInstructions || '';
+        }
+    });
+}
+
+// Injection de la modale de configuration du copilote au démarrage
+injectCopilotSettingsModal();
+
+// =================================================================================================
+// INTERFACE COPILOTE IA - VERSION MODERNE ET FLUIDE
+// =================================================================================================
+
+/**
+ * Injecte l'interface copilote moderne dans la conversation
+ */
+function injectCopilotInterface() {
+    // Éviter les doublons
+    if (document.getElementById('cx-copilot-box')) return;
+
+    // Vérifier qu'on est dans une conversation
+    const chatArea = document.querySelector('[data-testid="conversation-panel-messages"]');
+    if (!chatArea) return;
+
+    // Créer la boîte copilote principale
+    const copilotBox = document.createElement('div');
+    copilotBox.id = 'cx-copilot-box';
+    copilotBox.className = 'hidden'; // Caché par défaut
+    copilotBox.innerHTML = `
+        <div id="cx-copilot-header">
+            <div id="cx-copilot-title">
+                <span class="icon">🤖</span>
+                <span>Assistant IA</span>
+            </div>
+            <button id="cx-copilot-close" title="Fermer">&times;</button>
+        </div>
+        <div id="cx-copilot-body">
+            <textarea id="cx-copilot-input" placeholder="Décrivez le type de réponse que vous souhaitez..."></textarea>
+            <div id="cx-copilot-actions">
+                <button class="cx-copilot-btn cx-copilot-btn-secondary" id="cx-copilot-clear">
+                    🗑️ Effacer
+                </button>
+                <button class="cx-copilot-btn cx-copilot-btn-primary" id="cx-copilot-generate">
+                    ✨ Générer
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Créer le bouton de suggestions flottant
+    const suggestionsBtn = document.createElement('button');
+    suggestionsBtn.id = 'cx-copilot-suggestions-btn';
+    suggestionsBtn.innerHTML = `
+        <span>💡</span>
+        <span>Suggestions IA</span>
+    `;
+
+    // Ajouter les éléments au DOM
+    document.body.appendChild(copilotBox);
+    document.body.appendChild(suggestionsBtn);
+
+    // Attacher les événements
+    attachCopilotEvents();
+
+    console.log('Interface copilote moderne injectée avec succès');
+}
+
+/**
+ * Attache les événements pour l'interface copilote
+ */
+function attachCopilotEvents() {
+    const copilotBox = document.getElementById('cx-copilot-box');
+    const suggestionsBtn = document.getElementById('cx-copilot-suggestions-btn');
+    const closeBtn = document.getElementById('cx-copilot-close');
+    const clearBtn = document.getElementById('cx-copilot-clear');
+    const generateBtn = document.getElementById('cx-copilot-generate');
+    const input = document.getElementById('cx-copilot-input');
+
+    // Afficher/masquer la boîte copilote
+    suggestionsBtn?.addEventListener('click', () => {
+        // Au lieu d'ouvrir la boîte d'input, afficher directement les suggestions
+        showCopilotSuggestions();
+    });
+
+    // Fermer la boîte copilote
+    closeBtn?.addEventListener('click', () => {
+        copilotBox.classList.add('hidden');
+    });
+
+    // Effacer le texte
+    clearBtn?.addEventListener('click', () => {
+        input.value = '';
+        input.focus();
+    });
+
+    // Générer une réponse IA
+    generateBtn?.addEventListener('click', async () => {
+        const prompt = input.value.trim();
+        if (!prompt) {
+            alert('Veuillez saisir une instruction pour l\'IA');
+            return;
+        }
+
+        await generateCopilotResponse(prompt);
+    });
+
+    // Raccourci clavier pour générer (Ctrl+Enter)
+    input?.addEventListener('keydown', async (e) => {
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            const prompt = input.value.trim();
+            if (prompt) {
+                await generateCopilotResponse(prompt);
+            }
+        }
+    });
+}
+
+/**
+ * Génère une réponse avec l'IA et l'affiche
+ */
+async function generateCopilotResponse(prompt) {
+    const generateBtn = document.getElementById('cx-copilot-generate');
+    const originalText = generateBtn.textContent;
+
+    try {
+        // Afficher l'état de chargement
+        generateBtn.innerHTML = '<span class="cx-copilot-loading">Génération...</span>';
+        generateBtn.disabled = true;
+
+        // Récupérer le contexte de la conversation
+        const conversationContext = extractConversationContext();
+        
+        // Construire le prompt complet
+        const fullPrompt = `Contexte de la conversation:\n${conversationContext}\n\nInstruction: ${prompt}\n\nVeuillez fournir une réponse appropriée en français.`;
+
+        // Appeler l'IA
+        const response = await callCopilotAI(fullPrompt);
+
+        // Afficher la réponse
+        showCopilotResponse(response);
+
+    } catch (error) {
+        console.error('Erreur lors de la génération IA:', error);
+        alert('Erreur lors de la génération: ' + error.message);
+    } finally {
+        // Restaurer le bouton
+        generateBtn.innerHTML = '✨ Générer';
+        generateBtn.disabled = false;
+    }
+}
+
+/**
+ * Extrait le contexte de la conversation WhatsApp
+ */
+function extractConversationContext() {
+    const messages = document.querySelectorAll('[data-testid="msg-container"]');
+    const recentMessages = Array.from(messages).slice(-10); // 10 derniers messages
+    
+    let context = '';
+    recentMessages.forEach(msg => {
+        const textElement = msg.querySelector('[data-testid="conversation-text"]');
+        if (textElement) {
+            const isOutgoing = msg.querySelector('[data-testid="msg-meta"]')?.closest('[data-testid="msg-container"]')?.classList.contains('message-out');
+            const sender = isOutgoing ? 'Moi' : 'Contact';
+            context += `${sender}: ${textElement.textContent.trim()}\n`;
+        }
+    });
+    
+    return context || 'Aucun contexte de conversation disponible.';
+}
+
+/**
+ * Affiche un popup avec des suggestions prédéfinies
+ */
+function showCopilotSuggestions() {
+    // Nettoyer les anciens éléments qui pourraient traîner
+    const oldSuggestionsBox = document.getElementById('cx-copilot-suggestions-box');
+    if (oldSuggestionsBox) {
+        oldSuggestionsBox.remove();
+    }
+    
+    // Supprimer l'ancien popup s'il existe
+    const existingPopup = document.getElementById('cx-copilot-suggestions-popup');
+    if (existingPopup) existingPopup.remove();
+
+    // Récupérer le contexte de la conversation
+    const conversationContext = extractConversationContext();
+    
+    // Suggestions prédéfinies basées sur le contexte
+    const suggestions = [
+        {
+            title: "Réponse professionnelle",
+            text: "Rédigez une réponse professionnelle et courtoise en tenant compte du contexte de la conversation."
+        },
+        {
+            title: "Réponse amicale",
+            text: "Écrivez une réponse chaleureuse et amicale qui maintient une bonne relation."
+        },
+        {
+            title: "Résumé de conversation",
+            text: "Résumez les points clés de cette conversation de manière claire et concise."
+        },
+        {
+            title: "Réponse de remerciement",
+            text: "Rédigez un message de remerciement approprié et sincère."
+        },
+        {
+            title: "Demande de clarification",
+            text: "Formulez poliment une demande de clarification ou d'information supplémentaire."
+        },
+        {
+            title: "Proposition de solutions",
+            text: "Proposez des solutions constructives basées sur la discussion en cours."
+        }
+    ];
+
+    // Créer le popup de suggestions
+    const suggestionsPopup = document.createElement('div');
+    suggestionsPopup.id = 'cx-copilot-suggestions-popup';
+    
+    let suggestionsHTML = '';
+    suggestions.forEach((suggestion, index) => {
+        suggestionsHTML += `
+            <div class="cx-suggestion-item" data-suggestion="${suggestion.text}">
+                <div class="suggestion-title">${suggestion.title}</div>
+                <div class="suggestion-text">${suggestion.text}</div>
+            </div>
+        `;
+    });
+
+    suggestionsPopup.innerHTML = `
+        <div id="cx-copilot-suggestions-popup-header">
+            <div id="cx-copilot-suggestions-popup-title">
+                <span>💡</span>
+                <span>Suggestions IA</span>
+            </div>
+            <button id="cx-copilot-suggestions-popup-close" title="Fermer">&times;</button>
+        </div>
+        <div id="cx-copilot-suggestions-popup-content">
+            ${suggestionsHTML}
+        </div>
+        <div class="cx-copilot-suggestions-actions">
+            <button class="cx-copilot-btn cx-copilot-btn-secondary" id="cx-open-custom-input">
+                ✏️ Personnalisé
+            </button>
+            <button class="cx-copilot-btn cx-copilot-btn-primary" id="cx-refresh-suggestions">
+                🔄 Actualiser
+            </button>
+        </div>
+    `;
+
+    // Ajouter au DOM
+    document.body.appendChild(suggestionsPopup);
+
+    // Fonction pour fermer le popup
+    const closePopup = () => {
+        suggestionsPopup.remove();
+        document.removeEventListener('keydown', handleEscapeKey);
+    };
+
+    // Gérer la touche Échap
+    const handleEscapeKey = (e) => {
+        if (e.key === 'Escape') {
+            closePopup();
+        }
+    };
+
+    // Ajouter l'event listener pour Échap
+    document.addEventListener('keydown', handleEscapeKey);
+
+    // Attacher les événements
+    const closeBtn = suggestionsPopup.querySelector('#cx-copilot-suggestions-popup-close');
+    const customInputBtn = suggestionsPopup.querySelector('#cx-open-custom-input');
+    const refreshBtn = suggestionsPopup.querySelector('#cx-refresh-suggestions');
+    const suggestionItems = suggestionsPopup.querySelectorAll('.cx-suggestion-item');
+
+    closeBtn.addEventListener('click', closePopup);
+
+    // Bouton pour ouvrir la boîte d'input personnalisé
+    customInputBtn.addEventListener('click', () => {
+        closePopup();
+        // Ouvrir la boîte d'input IA
+        const copilotBox = document.getElementById('cx-copilot-box');
+        if (copilotBox) {
+            copilotBox.classList.remove('hidden');
+            const input = document.getElementById('cx-copilot-input');
+            if (input) input.focus();
+        }
+    });
+
+    // Bouton pour actualiser les suggestions
+    refreshBtn.addEventListener('click', () => {
+        closePopup();
+        showCopilotSuggestions(); // Réafficher le popup
+    });
+
+    // Clic sur une suggestion pour la générer
+    suggestionItems.forEach(item => {
+        item.addEventListener('click', async () => {
+            const suggestionText = item.dataset.suggestion;
+            closePopup();
+            
+            // Générer la réponse avec la suggestion sélectionnée
+            try {
+                // Construire le prompt complet
+                const fullPrompt = `Contexte de la conversation:\n${conversationContext}\n\nInstruction: ${suggestionText}\n\nVeuillez fournir une réponse appropriée en français.`;
+
+                // Afficher un indicateur de chargement temporaire
+                const loadingPopup = document.createElement('div');
+                loadingPopup.id = 'cx-copilot-loading';
+                loadingPopup.style.cssText = `
+                    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                    background: white; padding: 20px; border-radius: 12px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.12); z-index: 10025;
+                    display: flex; align-items: center; gap: 12px;
+                    font-family: var(--cx-font-family); color: #1a1a1a;
+                `;
+                loadingPopup.innerHTML = '<span class="cx-copilot-loading">Génération en cours...</span>';
+                document.body.appendChild(loadingPopup);
+
+                // Appeler l'IA
+                const response = await callCopilotAI(fullPrompt);
+                
+                // Supprimer l'indicateur de chargement
+                loadingPopup.remove();
+
+                // Afficher la réponse
+                showCopilotResponse(response);
+
+            } catch (error) {
+                console.error('Erreur lors de la génération IA:', error);
+                if (document.getElementById('cx-copilot-loading')) {
+                    document.getElementById('cx-copilot-loading').remove();
+                }
+                alert('Erreur lors de la génération: ' + error.message);
+            }
+        });
+    });
+
+    // Auto-fermeture après 60 secondes
+    setTimeout(() => {
+        if (document.getElementById('cx-copilot-suggestions-popup')) {
+            closePopup();
+        }
+    }, 60000);
+}
+
+/**
+ * Affiche la réponse de l'IA dans un popup discret
+ */
+function showCopilotResponse(response) {
+    // Supprimer l'ancien popup s'il existe
+    const existingPopup = document.getElementById('cx-copilot-response-popup');
+    if (existingPopup) existingPopup.remove();
+
+    // Créer le popup de réponse
+    const responsePopup = document.createElement('div');
+    responsePopup.id = 'cx-copilot-response-popup';
+    responsePopup.innerHTML = `
+        <div id="cx-copilot-response-popup-header">
+            <div id="cx-copilot-response-popup-title">
+                <span>🤖</span>
+                <span>Réponse générée</span>
+            </div>
+            <button id="cx-copilot-response-popup-close" title="Fermer">&times;</button>
+        </div>
+        <div id="cx-copilot-response-popup-content">
+            <p>${response.replace(/\n/g, '</p><p>')}</p>
+        </div>
+        <div class="cx-copilot-popup-actions">
+            <button class="cx-copilot-btn cx-copilot-btn-secondary" id="cx-copilot-select-all">
+                🔸 Tout
+            </button>
+            <button class="cx-copilot-btn cx-copilot-btn-primary" id="cx-copilot-copy-response">
+                📋 Copier
+            </button>
+            <button class="cx-copilot-btn cx-copilot-btn-secondary" id="cx-copilot-insert-response">
+                ➕ Insérer
+            </button>
+        </div>
+    `;
+
+    // Ajouter au DOM
+    document.body.appendChild(responsePopup);
+
+    // Fonction pour fermer le popup
+    const closePopup = () => {
+        responsePopup.remove();
+        document.removeEventListener('keydown', handleEscapeKey);
+    };
+
+    // Gérer la touche Échap
+    const handleEscapeKey = (e) => {
+        if (e.key === 'Escape') {
+            closePopup();
+        }
+    };
+
+    // Ajouter l'event listener pour Échap
+    document.addEventListener('keydown', handleEscapeKey);
+
+    // Attacher les événements
+    const closeBtn = responsePopup.querySelector('#cx-copilot-response-popup-close');
+    const selectAllBtn = responsePopup.querySelector('#cx-copilot-select-all');
+    const copyBtn = responsePopup.querySelector('#cx-copilot-copy-response');
+    const insertBtn = responsePopup.querySelector('#cx-copilot-insert-response');
+    const contentDiv = responsePopup.querySelector('#cx-copilot-response-popup-content');
+
+    closeBtn.addEventListener('click', closePopup);
+
+    // Bouton pour sélectionner tout le texte
+    selectAllBtn.addEventListener('click', () => {
+        const range = document.createRange();
+        range.selectNodeContents(contentDiv);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        selectAllBtn.innerHTML = '✓ OK';
+        selectAllBtn.style.background = '#28a745';
+        setTimeout(() => {
+            selectAllBtn.innerHTML = '🔸 Tout';
+            selectAllBtn.style.background = '';
+        }, 1500);
+    });
+
+    copyBtn.addEventListener('click', async () => {
+        try {
+            // Obtenir le texte pur sans balises HTML
+            const textContent = contentDiv.textContent || contentDiv.innerText || response;
+            await navigator.clipboard.writeText(textContent);
+            copyBtn.innerHTML = '✓ Copié';
+            copyBtn.style.background = '#28a745';
+            setTimeout(() => {
+                copyBtn.innerHTML = '📋 Copier';
+                copyBtn.style.background = '';
+            }, 2000);
+        } catch (error) {
+            console.error('Erreur lors de la copie:', error);
+            // Fallback pour les navigateurs qui ne supportent pas navigator.clipboard
+            const textContent = contentDiv.textContent || contentDiv.innerText || response;
+            const textArea = document.createElement('textarea');
+            textArea.value = textContent;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                copyBtn.innerHTML = '✓ Copié';
+                copyBtn.style.background = '#28a745';
+            } catch (err) {
+                copyBtn.innerHTML = '❌ Erreur';
+                copyBtn.style.background = '#dc3545';
+            }
+            
+            document.body.removeChild(textArea);
+            
+            setTimeout(() => {
+                copyBtn.innerHTML = '📋 Copier';
+                copyBtn.style.background = '';
+            }, 2000);
+        }
+    });
+
+    insertBtn.addEventListener('click', () => {
+        insertTextIntoWhatsAppInput(response);
+        closePopup();
+    });
+
+    // Permettre la sélection du texte avec double-clic
+    contentDiv.addEventListener('dblclick', () => {
+        const range = document.createRange();
+        range.selectNodeContents(contentDiv);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+    });
+
+    // Ajouter un menu contextuel personnalisé pour la copie
+    contentDiv.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        
+        // Simuler un clic sur le bouton copier
+        copyBtn.click();
+        
+        // Message visuel temporaire
+        const tooltip = document.createElement('div');
+        tooltip.textContent = 'Texte copié !';
+        tooltip.style.cssText = `
+            position: fixed;
+            left: ${e.clientX}px;
+            top: ${e.clientY}px;
+            background: #28a745;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 999999;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        `;
+        document.body.appendChild(tooltip);
+        
+        // Animation d'apparition
+        setTimeout(() => tooltip.style.opacity = '1', 10);
+        
+        // Suppression après 1.5s
+        setTimeout(() => {
+            tooltip.style.opacity = '0';
+            setTimeout(() => document.body.removeChild(tooltip), 300);
+        }, 1500);
+    });
+
+    // Auto-fermeture après 30 secondes
+    setTimeout(() => {
+        if (document.getElementById('cx-copilot-response-popup')) {
+            closePopup();
+        }
+    }, 30000);
+}
+
+/**
+ * Insère le texte dans le champ de saisie WhatsApp
+ */
+function insertTextIntoWhatsAppInput(text) {
+    const inputBox = document.querySelector('[data-testid="conversation-compose-box-input"]');
+    if (inputBox) {
+        inputBox.focus();
+        
+        // Utiliser la méthode de saisie simulée
+        document.execCommand('insertText', false, text);
+        
+        // Déclencher les événements nécessaires
+        inputBox.dispatchEvent(new Event('input', { bubbles: true }));
+        inputBox.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+}
+
+/**
+ * Masque/Affiche l'interface copilote
+ */
+function toggleCopilotInterface() {
+    const copilotBox = document.getElementById('cx-copilot-box');
+    const suggestionsBtn = document.getElementById('cx-copilot-suggestions-btn');
+    
+    if (copilotBox && suggestionsBtn) {
+        const isHidden = copilotBox.classList.contains('hidden');
+        copilotBox.classList.toggle('hidden', !isHidden);
+        suggestionsBtn.classList.toggle('hidden', !isHidden);
+    }
+}
+
+// Observer pour injecter l'interface copilote quand une conversation est ouverte
+let copilotObserver = null;
+function initializeCopilotObserver() {
+    if (copilotObserver) copilotObserver.disconnect();
+    
+    copilotObserver = new MutationObserver(() => {
+        // Vérifier si on est dans une conversation
+        const conversationPanel = document.querySelector('[data-testid="conversation-panel-messages"]');
+        if (conversationPanel && !document.getElementById('cx-copilot-box')) {
+            setTimeout(injectCopilotInterface, 1000); // Petit délai pour s'assurer que la conversation est chargée
+        }
+    });
+    
+    copilotObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+// Fonction utilitaire pour appeler Gemini ou GPT
+async function callCopilotAI(prompt) {
+    const { copilotConfig = {} } = await chrome.storage.local.get('copilotConfig');
+    const apiKey = copilotConfig.apiKey || '';
+    const instructions = copilotConfig.customInstructions || '';
+    if (!apiKey) throw new Error('Clé API manquante.');
+
+    // Détection du type d'API (Gemini ou OpenAI)
+    const isOpenAI = apiKey.startsWith('sk-');
+    let endpoint, headers, body;
+    if (isOpenAI) {
+        endpoint = 'https://api.openai.com/v1/chat/completions';
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        };
+        body = JSON.stringify({
+            model: 'gpt-3.5-turbo',
+            messages: [
+                { role: 'system', content: instructions },
+                { role: 'user', content: prompt }
+            ]
+        });
+    } else {
+        // Gemini API (Google) - Correction du modèle
+        endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
+        headers = { 'Content-Type': 'application/json' };
+        body = JSON.stringify({
+            contents: [
+                { parts: [ { text: instructions + '\n' + prompt } ] }
+            ]
+        });
+    }
+    try {
+        const response = await fetch(endpoint, { method: 'POST', headers, body });
+        const data = await response.json();
+        if (isOpenAI) {
+            return data.choices?.[0]?.message?.content || 'Réponse vide.';
+        } else {
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Réponse vide.';
+        }
+    } catch (err) {
+        return 'Erreur IA : ' + err.message;
+    }
+}
+
+// Correction : injecter la box Copilot IA et le bouton Suggestions AVANT la barre d'input
+function injectCopilotBox() {
+    if (document.getElementById('cx-copilot-box')) return;
+    const inputArea = document.querySelector('footer');
+    if (!inputArea) return;
+    const box = document.createElement('div');
+    box.id = 'cx-copilot-box';
+    box.style.background = '#f7fafc';
+    box.style.border = '1px solid #d0d7de';
+    box.style.borderRadius = '8px';
+    box.style.padding = '12px 16px';
+    box.style.margin = '12px 0';
+    box.style.display = 'flex';
+    box.style.flexDirection = 'column';
+    box.style.gap = '8px';
+    box.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+    box.style.zIndex = '10010';
+    box.style.pointerEvents = 'auto';
+    box.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;">
+            <input type="text" id="cx-copilot-prompt" placeholder="Demandez à l'IA..." style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid #d0d7de;font-size:15px;">
+            <button id="cx-copilot-generate-btn" style="background:#00a884;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:15px;cursor:pointer;">Générer</button>
+        </div>
+    `;
+    inputArea.parentNode.insertBefore(box, inputArea);
+
+    document.getElementById('cx-copilot-generate-btn').onclick = async () => {
+        const prompt = document.getElementById('cx-copilot-prompt').value.trim();
+        if (!prompt) {
+            showCopilotResponse('Veuillez entrer une demande.');
+            return;
+        }
+        
+        // Afficher un message de chargement dans le popup
+        showCopilotResponse('🔄 Génération en cours...');
+        
+        try {
+            const result = await callCopilotAI(prompt);
+            // Vider l'input après génération réussie
+            document.getElementById('cx-copilot-prompt').value = '';
+            // Afficher la réponse dans le popup
+            showCopilotResponse(result);
+        } catch (error) {
+            showCopilotResponse('❌ Erreur lors de la génération. Veuillez réessayer.');
+        }
+    };
+
+    // Ajouter la gestion de la touche Entrée pour l'input
+    document.getElementById('cx-copilot-prompt').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            document.getElementById('cx-copilot-generate-btn').click();
+        }
+    });
+}
+
+// Bouton pour afficher/masquer le copilote
+function injectCopilotToggleBtn() {
+    if (document.getElementById('cx-copilot-toggle-btn')) return;
+    const inputArea = document.querySelector('footer');
+    if (!inputArea) return;
+    const btn = document.createElement('button');
+    btn.id = 'cx-copilot-toggle-btn';
+    btn.textContent = '👁️ Afficher/Masquer Copilot';
+    btn.style.background = '#e9edef';
+    btn.style.color = '#008a69';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '20px';
+    btn.style.padding = '8px 18px';
+    btn.style.fontSize = '15px';
+    btn.style.cursor = 'pointer';
+    btn.style.margin = '8px 0';
+    btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+    btn.style.zIndex = '10010';
+    btn.style.pointerEvents = 'auto';
+    inputArea.parentNode.insertBefore(btn, inputArea);
+    btn.onclick = () => {
+        const copilotBox = document.getElementById('cx-copilot-box');
+        const suggestionsBtn = document.getElementById('cx-copilot-suggestions-btn');
+        if (copilotBox) copilotBox.style.display = (copilotBox.style.display === 'none') ? 'flex' : 'none';
+        if (suggestionsBtn) suggestionsBtn.style.display = (suggestionsBtn.style.display === 'none') ? 'inline-block' : 'none';
+    };
+}
+
+// Ajout d'une croix pour fermer la box de réponse IA - DEPRECATED
+// Cette fonction a été remplacée par la version popup à la ligne 1681
+
+// Injection immédiate du bouton toggle copilote
+function tryInjectCopilotElements() {
+    const inputArea = document.querySelector('footer');
+    if (inputArea) {
+        injectCopilotToggleBtn();
+        injectCopilotBox();
+        injectCopilotSuggestionsBtn();
+    }
+}
+let copilotInjectInterval = null;
+copilotInjectInterval = setInterval(() => {
+    tryInjectCopilotElements();
+    // Si les deux éléments sont présents, on arrête l'intervalle
+    if (document.getElementById('cx-copilot-box') && document.getElementById('cx-copilot-suggestions-btn')) {
+        clearInterval(copilotInjectInterval);
+    }
+}, 500);
+
+// Injection du bouton Suggestions Copilot et affichage des suggestions IA
+function injectCopilotSuggestionsBtn() {
+    if (document.getElementById('cx-copilot-suggestions-btn')) return;
+    const inputArea = document.querySelector('footer');
+    if (!inputArea) return;
+    const btn = document.createElement('button');
+    btn.id = 'cx-copilot-suggestions-btn';
+    btn.textContent = '💡 Suggestions Copilot';
+    btn.style.background = '#008a69';
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '20px';
+    btn.style.padding = '8px 18px';
+    btn.style.fontSize = '15px';
+    btn.style.cursor = 'pointer';
+    btn.style.margin = '8px 0';
+    btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+    btn.style.zIndex = '10010';
+    btn.style.pointerEvents = 'auto';
+    inputArea.parentNode.insertBefore(btn, inputArea);
+
+    btn.onclick = async () => {
+        btn.disabled = true;
+        btn.textContent = 'Analyse en cours...';
+        // Récupérer les messages visibles de la conversation
+        let messages = Array.from(document.querySelectorAll('div.message-in, div.message-out, div._1wlJG'));
+        if (messages.length === 0) {
+            messages = Array.from(document.querySelectorAll('[data-testid="msg-container"]'));
+        }
+        const texts = messages.map(m => m.innerText).filter(Boolean).join('\n');
+        const prompt = `Voici la conversation WhatsApp :\n${texts}\n\nQuelles actions ou réponses suggères-tu ?`;
+        const result = await callCopilotAI(prompt);
+        showCopilotResponse(result); // Utiliser showCopilotResponse pour afficher dans le popup
+        btn.disabled = false;
+        btn.textContent = '💡 Suggestions Copilot';
+    };
+}
+
+// Observer pour injecter la box IA à chaque affichage de conversation
+// Injection immédiate de la barre Copilot dès que le footer est présent
+function tryInjectCopilotElements() {
+    const inputArea = document.querySelector('footer');
+    if (inputArea) {
+        injectCopilotToggleBtn();
+        injectCopilotBox();
+        injectCopilotSuggestionsBtn();
+    }
+}
+copilotInjectInterval = setInterval(() => {
+    tryInjectCopilotElements();
+    // Si les deux éléments sont présents, on arrête l'intervalle
+    if (document.getElementById('cx-copilot-box') && document.getElementById('cx-copilot-suggestions-btn')) {
+        clearInterval(copilotInjectInterval);
+    }
+}, 500);
+
+// Injection du bouton Suggestions Copilot et affichage des suggestions IA
+function injectCopilotSuggestionsBtn() {
+    if (document.getElementById('cx-copilot-suggestions-btn')) return;
+    const inputArea = document.querySelector('footer');
+    if (!inputArea) return;
+    const btn = document.createElement('button');
+    btn.id = 'cx-copilot-suggestions-btn';
+    btn.textContent = '💡 Suggestions Copilot';
+    btn.style.background = '#008a69';
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '20px';
+    btn.style.padding = '8px 18px';
+    btn.style.fontSize = '15px';
+    btn.style.cursor = 'pointer';
+    btn.style.margin = '8px 0';
+    btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+    btn.style.zIndex = '10010';
+    btn.style.pointerEvents = 'auto';
+    inputArea.parentNode.insertBefore(btn, inputArea);
+
+    btn.onclick = async () => {
+        btn.disabled = true;
+        btn.textContent = 'Analyse en cours...';
+        // Récupérer les messages visibles de la conversation
+        let messages = Array.from(document.querySelectorAll('div.message-in, div.message-out, div._1wlJG'));
+        if (messages.length === 0) {
+            messages = Array.from(document.querySelectorAll('[data-testid="msg-container"]'));
+        }
+        const texts = messages.map(m => m.innerText).filter(Boolean).join('\n');
+        const prompt = `Voici la conversation WhatsApp :\n${texts}\n\nQuelles actions ou réponses suggères-tu ?`;
+        const result = await callCopilotAI(prompt);
+        showCopilotResponse(result); // Utiliser showCopilotResponse pour afficher dans le popup
+        btn.disabled = false;
+        btn.textContent = '💡 Suggestions Copilot';
+    };
+}
+
+// Observer pour injecter le bouton Suggestions Copilot à chaque affichage de conversation
+let cxCopilotSuggestionsTimeout = null;
+function debouncedInjectCopilotSuggestionsBtn() {
+    if (cxCopilotSuggestionsTimeout) clearTimeout(cxCopilotSuggestionsTimeout);
+    cxCopilotSuggestionsTimeout = setTimeout(() => {
+        injectCopilotSuggestionsBtn();
+    }, 400);
+}
+const cxCopilotSuggestionsObserver = new MutationObserver(() => {
+    debouncedInjectCopilotSuggestionsBtn();
+});
+cxCopilotSuggestionsObserver.observe(document.body, { childList: true, subtree: true });
