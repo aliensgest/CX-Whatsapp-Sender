@@ -1142,3 +1142,167 @@
 #cx-copilot-box input, #cx-copilot-box button, #cx-copilot-box textarea {
   pointer-events: auto !important;
 }
+
+/* ==========================================================================
+   Styles pour l'enregistrement audio dans les modèles
+   ========================================================================== */
+
+.cx-audio-recording-section {
+  background: var(--cx-background-light);
+  border: 1px solid var(--cx-border-color);
+  border-radius: 8px;
+  padding: 15px;
+  margin-top: 10px;
+}
+
+.cx-recording-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.cx-record-btn {
+  background: #d32f2f;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cx-record-btn:hover {
+  background: #b71c1c;
+}
+
+.cx-stop-btn {
+  background: #666;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cx-stop-btn:hover {
+  background: #555;
+}
+
+#cx-template-recording-timer {
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: bold;
+  color: #d32f2f;
+  background: rgba(211, 47, 47, 0.1);
+  padding: 5px 10px;
+  border-radius: 4px;
+}
+
+#cx-template-audio-preview {
+  border-top: 1px solid var(--cx-border-color);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+#cx-template-audio-player {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+#cx-template-save-audio,
+#cx-template-cancel-audio {
+  margin-right: 10px;
+  padding: 8px 16px;
+  border: 1px solid var(--cx-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#cx-template-save-audio {
+  background: var(--cx-primary);
+  color: white;
+  border-color: var(--cx-primary);
+}
+
+#cx-template-save-audio:hover {
+  background: var(--cx-primary-dark);
+}
+
+#cx-template-cancel-audio {
+  background: white;
+  color: var(--cx-text-dark);
+}
+
+#cx-template-cancel-audio:hover {
+  background: var(--cx-background-light);
+}
+
+#cx-template-record-audio-btn {
+  background: #ff6b35;
+  color: white;
+  border: 1px solid #ff6b35;
+}
+
+#cx-template-record-audio-btn:hover {
+  background: #e55a2b;
+  border-color: #e55a2b;
+}
+
+/* Styles pour l'affichage des attachments avec icônes */
+.cx-attachment-item {
+  background: white;
+  border: 1px solid var(--cx-border-color);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cx-attachment-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.cx-attachment-name {
+  flex-grow: 1;
+  font-weight: 500;
+  color: var(--cx-text-dark);
+}
+
+.cx-attachment-type {
+  font-size: 12px;
+  color: var(--cx-text-light);
+  background: var(--cx-background-light);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.cx-attachment-remove {
+  background: #d32f2f;
+  color: white;
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cx-attachment-remove:hover {
+  background: #b71c1c;
+}

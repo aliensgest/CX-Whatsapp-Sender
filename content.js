@@ -180,7 +180,28 @@ async function processSingleContact(contactName, message, attachmentsData) {
         await waitForElement(MESSAGE_BOX_SELECTOR, 10000); // Attendre que la conversation soit pleinement chargée
 
         // 2. Préparer les pièces jointes
-        const fileObjects = attachmentsData.map(att => dataURLtoFile(att.dataUrl, att.name));
+        const fileObjects = attachmentsData.map(att => {
+            // Créer le fichier avec le bon type MIME
+            let finalFileName = att.name;
+            let finalMimeType = att.type;
+            
+            // Forcer .ogg pour les messages vocaux
+            if (att.isVoiceMessage || att.name.includes('Message_vocal') || att.type.includes('ogg')) {
+                if (!finalFileName.endsWith('.ogg')) {
+                    finalFileName = finalFileName.replace(/\.(webm|mp3|wav|m4a)$/, '.ogg');
+                }
+                finalMimeType = 'audio/ogg';
+            }
+            
+            // Créer une nouvelle dataURL avec le bon MIME type si nécessaire
+            let finalDataURL = att.dataUrl;
+            if (att.type !== finalMimeType) {
+                finalDataURL = att.dataUrl.replace(/data:audio\/[^;]+/, `data:${finalMimeType}`);
+            }
+            
+            return dataURLtoFile(finalDataURL, finalFileName);
+        });
+        
         const mediaAttachments = fileObjects.filter(att => att.type.startsWith('image/') || att.type.startsWith('video/'));
         const audioAttachments = fileObjects.filter(att => att.type.startsWith('audio/'));
         const docAttachments = fileObjects.filter(att => !mediaAttachments.includes(att) && !audioAttachments.includes(att));
@@ -706,7 +727,20 @@ function injectTemplatesModal() {
                         </div>
                         <div class="cx-template-attachment-actions">
                             <button id="cx-template-attach-file-btn" class="secondary">Joindre des fichiers</button>
+                            <button id="cx-template-record-audio-btn" class="secondary">🎤 Enregistrer un vocal</button>
                             <input type="file" id="cx-template-attachment-input" multiple style="display: none;">
+                        </div>
+                        <div id="cx-template-audio-recording" style="display: none;" class="cx-audio-recording-section">
+                            <div class="cx-recording-controls">
+                                <button id="cx-template-start-recording" class="cx-record-btn">🔴 Démarrer</button>
+                                <button id="cx-template-stop-recording" class="cx-stop-btn" style="display: none;">⏹️ Arrêter</button>
+                                <span id="cx-template-recording-timer">00:00</span>
+                            </div>
+                            <div id="cx-template-audio-preview" style="display: none;">
+                                <audio controls id="cx-template-audio-player"></audio>
+                                <button id="cx-template-save-audio" class="secondary">💾 Ajouter ce vocal</button>
+                                <button id="cx-template-cancel-audio" class="secondary">❌ Annuler</button>
+                            </div>
                         </div>
                     </div>
                     <div id="cx-template-editor-actions">
@@ -824,6 +858,148 @@ function injectTemplatesModal() {
         renderTemplateAttachments(currentTemplateAttachments);
         event.target.value = ''; // Allow re-selecting the same file
     });
+
+    // === GESTION DE L'ENREGISTREMENT AUDIO ===
+    const recordAudioBtn = document.getElementById('cx-template-record-audio-btn');
+    const audioRecordingSection = document.getElementById('cx-template-audio-recording');
+    const startRecordingBtn = document.getElementById('cx-template-start-recording');
+    const stopRecordingBtn = document.getElementById('cx-template-stop-recording');
+    const recordingTimer = document.getElementById('cx-template-recording-timer');
+    const audioPreview = document.getElementById('cx-template-audio-preview');
+    const audioPlayer = document.getElementById('cx-template-audio-player');
+    const saveAudioBtn = document.getElementById('cx-template-save-audio');
+    const cancelAudioBtn = document.getElementById('cx-template-cancel-audio');
+
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordingStartTime = 0;
+    let recordingInterval = null;
+    let currentAudioBlob = null;
+
+    recordAudioBtn.addEventListener('click', () => {
+        audioRecordingSection.style.display = 'block';
+    });
+
+    startRecordingBtn.addEventListener('click', async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    sampleRate: 48000
+                } 
+            });
+            
+            // Utiliser ogg/opus pour le format natif WhatsApp de messages vocaux
+            let options = { mimeType: 'audio/ogg;codecs=opus' };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                // Fallback 1: essayer ogg sans codec spécifique
+                options = { mimeType: 'audio/ogg' };
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    // Fallback 2: utiliser webm/opus (sera converti plus tard)
+                    options = { mimeType: 'audio/webm;codecs=opus' };
+                    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        // Fallback final: webm standard
+                        options = { mimeType: 'audio/webm' };
+                    }
+                }
+            }
+            
+            console.log('Format d\'enregistrement utilisé:', options.mimeType);
+            mediaRecorder = new MediaRecorder(stream, options);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                // Créer le blob avec le bon type MIME pour WhatsApp
+                let mimeType = 'audio/ogg';
+                if (options.mimeType.includes('webm')) {
+                    // Si on a utilisé webm, on garde webm mais on changera l'extension
+                    mimeType = options.mimeType;
+                }
+                
+                const audioBlob = new Blob(audioChunks, { type: mimeType });
+                currentAudioBlob = audioBlob;
+                const audioUrl = URL.createObjectURL(audioBlob);
+                audioPlayer.src = audioUrl;
+                audioPreview.style.display = 'block';
+                
+                // Arrêter le stream
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            recordingStartTime = Date.now();
+            
+            startRecordingBtn.style.display = 'none';
+            stopRecordingBtn.style.display = 'inline-block';
+            
+            // Démarrer le timer
+            recordingInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                const seconds = (elapsed % 60).toString().padStart(2, '0');
+                recordingTimer.textContent = `${minutes}:${seconds}`;
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Erreur d\'accès au microphone:', error);
+            alert('Impossible d\'accéder au microphone. Veuillez autoriser l\'accès.');
+        }
+    });
+
+    stopRecordingBtn.addEventListener('click', () => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            clearInterval(recordingInterval);
+            startRecordingBtn.style.display = 'inline-block';
+            stopRecordingBtn.style.display = 'none';
+        }
+    });
+
+    saveAudioBtn.addEventListener('click', async () => {
+        if (currentAudioBlob) {
+            // Convertir le blob en dataURL pour le stockage
+            const reader = new FileReader();
+            reader.onload = () => {
+                // Générer un nom de fichier avec extension .ogg pour WhatsApp
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const audioAttachment = {
+                    dataUrl: reader.result,
+                    name: `Message_vocal_${timestamp}.ogg`,
+                    type: 'audio/ogg',
+                    isVoiceMessage: true // Marquer comme message vocal WhatsApp
+                };
+                
+                currentTemplateAttachments.push(audioAttachment);
+                renderTemplateAttachments(currentTemplateAttachments);
+                
+                console.log('Message vocal ajouté:', audioAttachment.name);
+                
+                // Réinitialiser l'interface
+                audioRecordingSection.style.display = 'none';
+                audioPreview.style.display = 'none';
+                recordingTimer.textContent = '00:00';
+                currentAudioBlob = null;
+            };
+            reader.readAsDataURL(currentAudioBlob);
+        }
+    });
+
+    cancelAudioBtn.addEventListener('click', () => {
+        audioRecordingSection.style.display = 'none';
+        audioPreview.style.display = 'none';
+        recordingTimer.textContent = '00:00';
+        currentAudioBlob = null;
+        if (audioPlayer.src) {
+            URL.revokeObjectURL(audioPlayer.src);
+        }
+    });
 }
 
 /**
@@ -895,10 +1071,49 @@ function renderTemplateAttachments(attachments) {
     attachments.forEach((attachment, index) => {
         const attachmentDiv = document.createElement('div');
         attachmentDiv.className = 'cx-attachment-item';
+        
+        // Icône selon le type de fichier et si c'est un message vocal
+        let icon = '📄';
+        let typeLabel = attachment.type.split('/')[1];
+        
+        if (attachment.type.startsWith('image/')) {
+            icon = '🖼️';
+        } else if (attachment.type.startsWith('audio/')) {
+            if (attachment.isVoiceMessage || attachment.name.includes('Message_vocal') || attachment.type.includes('ogg')) {
+                icon = '�'; // Icône microphone pour les messages vocaux
+                typeLabel = 'vocal WhatsApp';
+            } else {
+                icon = '�🎵'; // Icône musique pour les autres fichiers audio
+            }
+        } else if (attachment.type.startsWith('video/')) {
+            icon = '🎬';
+        }
+        
         attachmentDiv.innerHTML = `
+            <span class="cx-attachment-icon">${icon}</span>
             <span class="cx-attachment-name">${attachment.name}</span>
-            <button class="cx-attachment-remove" data-index="${index}">&times;</button>
+            <span class="cx-attachment-type">(${typeLabel})</span>
+            <button class="cx-attachment-remove" data-index="${index}" title="Supprimer">&times;</button>
         `;
+        
+        // Si c'est un fichier audio, ajouter un lecteur
+        if (attachment.type.startsWith('audio/')) {
+            const audioPlayer = document.createElement('audio');
+            audioPlayer.controls = true;
+            audioPlayer.src = attachment.dataUrl;
+            audioPlayer.style.width = '100%';
+            audioPlayer.style.marginTop = '5px';
+            
+            // Style spécial pour les messages vocaux
+            if (attachment.isVoiceMessage || attachment.name.includes('Message_vocal')) {
+                audioPlayer.style.border = '2px solid #00a884';
+                audioPlayer.style.borderRadius = '8px';
+                audioPlayer.style.background = '#f0f8f5';
+            }
+            
+            attachmentDiv.appendChild(audioPlayer);
+        }
+        
         previewContainer.appendChild(attachmentDiv);
 
         // Ajouter l'événement de suppression
@@ -1137,14 +1352,97 @@ function closeOptionsModal() {
 }
 
 /**
+ * Vérifie l'état de la session utilisateur côté serveur (même logique que popup.js).
+ * @returns {Promise<{status: 'VALID' | 'INVALID_TOKEN' | 'NO_SESSION' | 'API_ERROR'}>}
+ */
+async function checkStoredTokenInContent() {
+    console.log('[CX Content] Checking for stored session...');
+    
+    const session = await chrome.storage.local.get(['activationToken', 'userPhone', 'tokenTimestamp']);
+    if (!session.activationToken || !session.userPhone) {
+        console.log('[CX Content] No session found in storage.');
+        return { status: 'NO_SESSION' };
+    }
+
+    // Vérification locale avec expiration du token (24h)
+    const TOKEN_EXPIRY_HOURS = 24;
+    const now = Date.now();
+    const tokenAge = session.tokenTimestamp ? (now - session.tokenTimestamp) : Infinity;
+    const maxAge = TOKEN_EXPIRY_HOURS * 60 * 60 * 1000; // 24h en millisecondes
+
+    if (tokenAge > maxAge) {
+        console.log('[CX Content] Token expired - clearing session');
+        await chrome.storage.local.remove(['activationToken', 'userPhone', 'tokenTimestamp']);
+        return { status: 'NO_SESSION' };
+    }
+
+    console.log(`[CX Content] Session valid for ${session.userPhone}. Token age: ${Math.round(tokenAge / (60 * 60 * 1000))}h`);
+    
+    // Workflow de vérification Directus activé
+    try {
+        const VERIFY_WORKFLOW_URL = 'https://admin.clicandclose.com/flows/trigger/b5247808-f6c2-439c-a9b0-5e50f142e7e8';
+        
+        const response = await fetch(VERIFY_WORKFLOW_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                phone: session.userPhone, 
+                token: session.activationToken 
+            })
+        });
+
+        if (!response.ok) {
+            console.error("[CX Content] Erreur serveur lors de la validation:", response.status);
+            return { status: 'API_ERROR' };
+        }
+        
+        const result = await response.json();
+
+        if (result.success) {
+            if (result.action === 'valid') {
+                return { status: 'VALID' };
+            } else if (result.action === 'new_session' || result.action === 'created') {
+                // Nouveau token généré, mise à jour locale
+                console.log('[CX Content] New token received from server');
+                await chrome.storage.local.set({ 
+                    activationToken: result.token,
+                    userPhone: session.userPhone,
+                    tokenTimestamp: Date.now()
+                });
+                return { status: 'VALID' };
+            }
+        } else {
+            console.log('[CX Content] Token invalide selon le serveur - nettoyage session');
+            await chrome.storage.local.remove(['activationToken', 'userPhone', 'tokenTimestamp']);
+            return { status: 'INVALID_TOKEN' };
+        }
+    } catch (error) {
+        console.error("[CX Content] Erreur durant la vérification:", error);
+        
+        // En cas d'erreur réseau, on garde le token local s'il n'est pas expiré
+        if (tokenAge <= maxAge) {
+            console.log('[CX Content] Erreur réseau, mais token pas expiré - conservation session');
+            return { status: 'VALID' };
+        } else {
+            await chrome.storage.local.remove(['activationToken', 'userPhone', 'tokenTimestamp']);
+            return { status: 'NO_SESSION' };
+        }
+    }
+}
+
+/**
  * Point d'entrée pour l'initialisation de l'interface injectée.
  * Attend que l'interface de WhatsApp soit prête avant d'injecter la barre d'outils.
  */
 async function initializeInjectedUI() {
     try {
         await waitForElement('#pane-side', 20000); // Attend un élément stable de l'UI de WA
-        const { activationToken } = await chrome.storage.local.get('activationToken');
-        const isActive = !!activationToken;
+        
+        // Vérification sécurisée de l'état de la session avec le serveur
+        const sessionState = await checkStoredTokenInContent();
+        const isActive = sessionState.status === 'VALID';
+        
+        console.log(`[CX Content] Session state: ${sessionState.status}, isActive: ${isActive}`);
 
         injectToolbar(isActive);
         // Injecte les modales juste après la toolbar pour garantir leur présence avant l'ajout des listeners
@@ -1165,6 +1463,25 @@ async function initializeInjectedUI() {
 
 // Lance l'injection de l'UI
 initializeInjectedUI();
+
+// Vérification périodique de la validité du token (toutes les 5 minutes)
+setInterval(async () => {
+    const sessionState = await checkStoredTokenInContent();
+    
+    if (sessionState.status === 'INVALID_TOKEN' || sessionState.status === 'API_ERROR') {
+        console.log('[CX Content] Token invalide détecté. Réinitialisation de l\'interface...');
+        
+        // Supprimer l'ancienne toolbar si elle existe
+        const existingToolbar = document.getElementById('cx-sender-toolbar');
+        const existingToggleBtn = document.getElementById('cx-toolbar-toggle-btn');
+        
+        if (existingToolbar) existingToolbar.remove();
+        if (existingToggleBtn) existingToggleBtn.remove();
+        
+        // Réinjecter avec le statut inactif
+        injectToolbar(false);
+    }
+}, 5 * 60 * 1000); // 5 minutes
 
 /**
  * Normalise un numéro en format +prefixNNNNNNNNN.

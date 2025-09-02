@@ -1,13 +1,20 @@
 document.addEventListener('DOMContentLoaded', function () {
     // --- CONFIGURATION ---
-    const API_BASE_URL = 'http://192.168.1.22:8055';
-    const WEBHOOK_URL = `http://192.168.1.22:8055/flows/trigger/38345740-be05-4138-aa7d-8b1fc650bf7a`;
+    const API_BASE_URL = 'https://admin.clicandclose.com'; // Migration vers HTTPS
+    const WEBHOOK_URL = `https://admin.clicandclose.com/flows/trigger/38345740-be05-4138-aa7d-8b1fc650bf7a`;
 
     // --- ÉLÉMENTS DU DOM (Activation) ---
     const loginSection = document.getElementById('login-section');
     const verifyBtn = document.getElementById('verify-btn');
     const phoneInput = document.getElementById('phone-input');
     const errorMessage = document.getElementById('error-message');
+    
+    // Debug: vérifier que les éléments existent
+    console.log('[CX Popup Debug] DOM elements check:');
+    console.log('loginSection:', loginSection);
+    console.log('verifyBtn:', verifyBtn);
+    console.log('phoneInput:', phoneInput);
+    console.log('errorMessage:', errorMessage);
 
     // Helper function to send log messages to the background script
     function logToBackground(message) {
@@ -18,6 +25,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const popupContainer = document.getElementById('popup-container'); // Conteneur principal des fonctionnalités
     const mainView = document.getElementById('main-view');
     const sendButton = document.getElementById('send-button');
+    
+    // Debug: vérifier les éléments principaux
+    console.log('popupContainer:', popupContainer);
+    console.log('mainView:', mainView);
     const messageInput = document.getElementById('message');
     const contactsInput = document.getElementById('contacts');
     const statusDiv = document.getElementById('status');
@@ -67,13 +78,19 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function showLogin() {
+        console.log('[CX Popup Debug] showLogin() called - showing login section');
         loginSection.classList.remove('hidden');
         popupContainer.classList.add('hidden');
+        console.log('[CX Popup Debug] Login section classes:', loginSection.className);
+        console.log('[CX Popup Debug] Popup container classes:', popupContainer.className);
     }
 
     function showMainFeatures() {
+        console.log('[CX Popup Debug] showMainFeatures() called - showing main features');
         loginSection.classList.add('hidden');
         popupContainer.classList.remove('hidden');
+        console.log('[CX Popup Debug] Login section classes:', loginSection.className);
+        console.log('[CX Popup Debug] Popup container classes:', popupContainer.className);
         // Charger les données de l'application une fois l'utilisateur authentifié
         loadTemplates();
         loadContactLists();
@@ -87,42 +104,90 @@ document.addEventListener('DOMContentLoaded', function () {
      * @returns {Promise<{status: 'VALID' | 'INVALID_TOKEN' | 'NO_SESSION' | 'API_ERROR', message?: string}>}
      */
     async function checkStoredToken() {
-        logToBackground('Checking for stored session...');
-        const session = await chrome.storage.local.get(['activationToken', 'userPhone']);
+        console.log('[CX Popup Debug] Checking for stored session...');
+        const session = await chrome.storage.local.get(['activationToken', 'userPhone', 'tokenTimestamp']);
+        
+        // Debug détaillé
+        console.log('[CX Popup Debug] Session data:', session);
+        
         if (!session.activationToken || !session.userPhone) {
             logToBackground('No session found in storage.');
+            console.log('[CX Popup Debug] No session - redirecting to login');
             return { status: 'NO_SESSION' };
         }
 
-        logToBackground(`Found session for ${session.userPhone}. Validating token with server...`);
+        // Vérification locale avec expiration du token (24h)
+        const TOKEN_EXPIRY_HOURS = 24;
+        const now = Date.now();
+        const tokenAge = session.tokenTimestamp ? (now - session.tokenTimestamp) : Infinity;
+        const maxAge = TOKEN_EXPIRY_HOURS * 60 * 60 * 1000; // 24h en millisecondes
 
+        if (tokenAge > maxAge) {
+            logToBackground(`Token expired (age: ${Math.round(tokenAge / (60 * 60 * 1000))}h). Clearing session.`);
+            console.log('[CX Popup Debug] Token expired - clearing session');
+            await chrome.storage.local.remove(['activationToken', 'userPhone', 'tokenTimestamp']);
+            return { status: 'NO_SESSION' };
+        }
+
+        logToBackground(`Found valid session for ${session.userPhone}. Token age: ${Math.round(tokenAge / (60 * 60 * 1000))}h`);
+        console.log('[CX Popup Debug] Session valid - using local validation');
+
+        // Workflow de vérification Directus activé
         try {
-            // On cherche un utilisateur qui a à la fois le bon numéro ET le bon token
-            const encodedPhone = encodeURIComponent(session.userPhone);
-            const encodedToken = encodeURIComponent(session.activationToken); // Bonne pratique d'encoder aussi le token
-            const validationUrl = `${API_BASE_URL}/items/CX_Users?filter[_and][0][phone][_eq]=${encodedPhone}&filter[_and][1][activation_token][_eq]=${encodedToken}&limit=1`;
-            const response = await fetch(validationUrl);
+            const VERIFY_WORKFLOW_URL = 'https://admin.clicandclose.com/flows/trigger/b5247808-f6c2-439c-a9b0-5e50f142e7e8';
+            
+            const response = await fetch(VERIFY_WORKFLOW_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    phone: session.userPhone, 
+                    token: session.activationToken 
+                })
+            });
 
             if (!response.ok) {
-                console.error("Erreur serveur lors de la validation du token:", response.status, response.statusText);
-                logToBackground(`Token validation API call failed with status: ${response.status}`);
+                console.error("[CX Popup Debug] Erreur serveur lors de la validation:", response.status);
+                logToBackground(`Token validation failed with status: ${response.status}`);
                 return { status: 'API_ERROR', message: `Erreur serveur (${response.status})` };
             }
+            
             const result = await response.json();
+            console.log('[CX Popup Debug] Server response:', result);
 
-            if (result.data && result.data.length === 1) {
-                logToBackground('Token is VALID.');
-                return { status: 'VALID' }; // Le token est valide !
+            if (result.success) {
+                if (result.action === 'valid') {
+                    logToBackground('Token is VALID (server confirmed).');
+                    console.log('[CX Popup Debug] Token is VALID - showing main features');
+                    return { status: 'VALID' };
+                } else if (result.action === 'new_session' || result.action === 'created') {
+                    // Nouveau token généré, mise à jour locale
+                    logToBackground(`New token generated: ${result.action}`);
+                    await chrome.storage.local.set({ 
+                        activationToken: result.token,
+                        userPhone: session.userPhone,
+                        tokenTimestamp: Date.now()
+                    });
+                    console.log('[CX Popup Debug] New token saved - showing main features');
+                    return { status: 'VALID' };
+                }
             } else {
-                // Le token existe localement mais n'est plus valide (ex: une autre session a été activée)
-                logToBackground('Token is INVALID. It will be cleared. Another device may have logged in.');
-                await chrome.storage.local.remove(['activationToken', 'userPhone']);
+                logToBackground('Token validation failed on server.');
+                console.log('[CX Popup Debug] Token validation failed - clearing and showing login');
+                await chrome.storage.local.remove(['activationToken', 'userPhone', 'tokenTimestamp']);
                 return { status: 'INVALID_TOKEN' };
             }
         } catch (error) {
-            console.error("Erreur durant la vérification du token:", error);
-            logToBackground(`Token validation failed with exception: ${error.message}`);
-            return { status: 'API_ERROR', message: error.message };
+            console.error("[CX Popup Debug] Erreur durant la vérification:", error);
+            logToBackground(`Token validation failed: ${error.message}`);
+            
+            // En cas d'erreur réseau, on garde le token local s'il n'est pas expiré
+            if (tokenAge <= maxAge) {
+                console.log('[CX Popup Debug] Network error, but token not expired - keeping session');
+                return { status: 'VALID' };
+            } else {
+                await chrome.storage.local.remove(['activationToken', 'userPhone', 'tokenTimestamp']);
+                return { status: 'NO_SESSION' };
+            }
         }
     }
 
@@ -572,10 +637,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const activation = await activateExtension(phoneNumber);
 
         if (activation.success) {
-            // Succès ! On stocke le token ET le numéro de tel.
+            // Succès ! On stocke le token, le numéro ET le timestamp
             await chrome.storage.local.set({ 
                 activationToken: activation.token,
-                userPhone: phoneNumber 
+                userPhone: phoneNumber,
+                tokenTimestamp: Date.now() // Ajout du timestamp pour l'expiration
             });
 
             // Recharge l'onglet WhatsApp Web pour activer la barre d'outils
@@ -598,29 +664,42 @@ document.addEventListener('DOMContentLoaded', function () {
      * POINT D'ENTRÉE : C'est la première chose qui s'exécute quand le popup s'ouvre.
      */
     async function initializePopup() {
+        console.log('[CX Popup Debug] Initializing popup...');
         const sessionState = await checkStoredToken();
+        
+        console.log('[CX Popup Debug] Session state result:', sessionState);
         
         switch (sessionState.status) {
             case 'VALID':
                 // Le token est valide, on affiche les fonctionnalités.
+                console.log('[CX Popup Debug] Case VALID - calling showMainFeatures()');
                 showMainFeatures();
                 break;
             
             case 'INVALID_TOKEN':
                 // Le token n'est plus valide (une autre session a été activée).
+                console.log('[CX Popup Debug] Case INVALID_TOKEN - calling showLogin()');
                 showLogin();
                 showError("Déjà connecté sur un autre appareil. Veuillez réactiver votre accès.");
                 break;
 
             case 'NO_SESSION':
                 // Aucun token en mémoire, l'utilisateur doit s'activer.
+                console.log('[CX Popup Debug] Case NO_SESSION - calling showLogin()');
                 showLogin();
                 // L'erreur "Pas d'abonnement actif" sera affichée après une tentative d'activation échouée, ce qui est plus logique.
                 break;
 
             case 'API_ERROR':
+                console.log('[CX Popup Debug] Case API_ERROR - calling showLogin()');
                 showLogin();
                 showError(`Erreur de connexion: ${sessionState.message}. Veuillez réessayer.`);
+                break;
+                
+            default:
+                console.error('[CX Popup Debug] Unknown session status:', sessionState.status);
+                showLogin();
+                showError("État de session inconnu. Veuillez réessayer.");
                 break;
         }
     }

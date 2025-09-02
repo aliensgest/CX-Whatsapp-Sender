@@ -8,7 +8,7 @@
     "scripting",
     "storage"
   ],
-  "host_permissions": ["http://192.168.1.22/*"],
+  "host_permissions": ["https://admin.clicandclose.com/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
