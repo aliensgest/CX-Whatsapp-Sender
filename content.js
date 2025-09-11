@@ -1213,14 +1213,14 @@ function injectToolbar(isActive) {
 
         const copilotSettingsBtn = toolbar.querySelector('#cx-copilot-settings-btn');
         if (copilotSettingsBtn) copilotSettingsBtn.addEventListener('click', () => {
-            const modal = document.getElementById('cx-copilot-settings-modal');
-            if (modal) {
-                modal.classList.toggle('cx-modal-hidden');
-                console.log('Copilot Settings Modal state:', modal.classList.contains('cx-modal-hidden') ? 'Hidden' : 'Visible');
+            if (window.openCopilotSettings) {
+                window.openCopilotSettings();
+                console.log('Copilot Settings Modal opened');
             } else {
-                console.error('Copilot Settings Modal not found in the DOM.');
+                console.error('openCopilotSettings function not available');
             }
         });
+        
         console.log('CX Sender Toolbar (Active) a été injectée avec succès.');
     } else {
         console.log('CX Sender Toolbar (Inactive) a été injectée avec succès.');
@@ -3255,23 +3255,62 @@ function injectCopilotSettingsModal() {
     });
 
     saveBtn.addEventListener('click', async () => {
-        const apiKey = document.getElementById('cx-api-key').value.trim();
-        const customInstructions = document.getElementById('cx-custom-instructions').value.trim();
-        await chrome.storage.local.set({
-            copilotConfig: { apiKey, customInstructions }
-        });
-        alert('Paramètres enregistrés avec succès !');
-        modal.classList.add('cx-modal-hidden');
-    });
-
-    // Pré-remplir les champs avec la config enregistrée à chaque ouverture
-    modal.addEventListener('transitionend', async () => {
-        if (!modal.classList.contains('cx-modal-hidden')) {
-            const { copilotConfig = {} } = await chrome.storage.local.get('copilotConfig');
-            document.getElementById('cx-api-key').value = copilotConfig.apiKey || '';
-            document.getElementById('cx-custom-instructions').value = copilotConfig.customInstructions || '';
+        try {
+            const apiKey = document.getElementById('cx-api-key').value.trim();
+            const customInstructions = document.getElementById('cx-custom-instructions').value.trim();
+            
+            console.log('[Copilot Settings] Sauvegarde:', { apiKey: '***', customInstructions });
+            
+            await chrome.storage.local.set({
+                copilotConfig: { apiKey, customInstructions }
+            });
+            
+            console.log('[Copilot Settings] Paramètres sauvegardés avec succès');
+            alert('Paramètres enregistrés avec succès !');
+            modal.classList.add('cx-modal-hidden');
+        } catch (error) {
+            console.error('[Copilot Settings] Erreur lors de la sauvegarde:', error);
+            alert('Erreur lors de la sauvegarde des paramètres.');
         }
     });
+
+    // Fonction pour charger les paramètres
+    let settingsLoaded = false;
+    
+    async function loadSettings() {
+        if (settingsLoaded) return; // Éviter de recharger plusieurs fois
+        
+        try {
+            const { copilotConfig = {} } = await chrome.storage.local.get('copilotConfig');
+            console.log('[Copilot Settings] Chargement des paramètres:', copilotConfig);
+            
+            const apiKeyInput = document.getElementById('cx-api-key');
+            const instructionsInput = document.getElementById('cx-custom-instructions');
+            
+            if (apiKeyInput) apiKeyInput.value = copilotConfig.apiKey || '';
+            if (instructionsInput) instructionsInput.value = copilotConfig.customInstructions || '';
+            
+            settingsLoaded = true;
+            console.log('[Copilot Settings] Paramètres chargés dans les inputs');
+        } catch (error) {
+            console.error('[Copilot Settings] Erreur lors du chargement:', error);
+        }
+    }
+
+    // Charger les paramètres seulement lors de l'ouverture de la modale
+    modal.addEventListener('transitionend', async (e) => {
+        if (e.target === modal && !modal.classList.contains('cx-modal-hidden')) {
+            settingsLoaded = false; // Reset pour permettre le chargement
+            await loadSettings();
+        }
+    });
+
+    // Fonction pour ouvrir la modale et charger les paramètres
+    window.openCopilotSettings = async function() {
+        settingsLoaded = false; // Reset avant ouverture
+        modal.classList.remove('cx-modal-hidden');
+        await loadSettings();
+    };
 }
 
 // Injection de la modale de configuration du copilote au démarrage
@@ -3796,12 +3835,8 @@ function showCopilotResponse(response) {
         }, 1500);
     });
 
-    // Auto-fermeture après 30 secondes
-    setTimeout(() => {
-        if (document.getElementById('cx-copilot-response-popup')) {
-            closePopup();
-        }
-    }, 30000);
+    // Note: La popup reste ouverte jusqu'à fermeture manuelle
+    console.log('[Copilot Response] Popup affichée et restera ouverte jusqu\'à fermeture manuelle');
 }
 
 /**

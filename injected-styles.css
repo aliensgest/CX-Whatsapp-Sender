@@ -1464,6 +1464,23 @@ label[for="cx-dev-mode-switch"] {
   border-radius: 6px;
   padding: 10px;
   min-height: 100px;
+  width: 100%;
+  box-sizing: border-box;
+  color: #1f2937 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  resize: vertical;
+  outline: none;
+}
+
+#cx-custom-instructions:focus {
+  border-color: var(--cx-primary);
+  box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.1);
+  background: #ffffff;
+}
+
+#cx-custom-instructions::placeholder {
+  color: #6b7280;
+  opacity: 0.8;
 }
 #cx-copilot-settings-save-btn {
   background: linear-gradient(135deg, var(--cx-primary) 0%, #f0b90b 100%);
