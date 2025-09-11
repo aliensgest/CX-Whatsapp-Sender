@@ -1,8 +1,16 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
-    background-color: #f0f2f5;
-    overflow: hidden; /* Empêche le scrollbar quand on change de vue */
+    background: linear-gradient(135deg, #1b1d4f 0%, #2a2d7a 50%, #3d4088 100%);
+    color: #ffffff;
+    overflow: hidden;
+    min-height: 100vh;
+    animation: backgroundShift 10s ease-in-out infinite;
+}
+
+@keyframes backgroundShift {
+    0%, 100% { background: linear-gradient(135deg, #1b1d4f 0%, #2a2d7a 50%, #3d4088 100%); }
+    50% { background: linear-gradient(135deg, #2a2d7a 0%, #3d4088 50%, #1b1d4f 100%); }
 }
 
 .hidden {
@@ -10,18 +18,68 @@ body {
 }
 
 #popup-container {
-    width: 350px;
+    width: 320px;
     padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 15px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 2px solid rgba(250, 204, 55, 0.4);
+    box-shadow: 0 15px 35px rgba(27, 29, 79, 0.4), 
+                0 0 0 1px rgba(255, 255, 255, 0.1);
+    position: relative;
+    overflow: hidden;
+    animation: containerFloat 6s ease-in-out infinite;
+}
+
+@keyframes containerFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+}
+
+#popup-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #facc37, #f4c430, #facc37);
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
 }
 
 h1 {
-    font-size: 20px;
-    color: #111b21;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 18px;
+    color: #facc37;
     text-align: center;
     margin: 0 0 10px 0;
+    font-weight: 700;
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    letter-spacing: -0.5px;
+    animation: titleGlow 3s ease-in-out infinite;
+}
+
+h1 img {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes titleGlow {
+    0%, 100% { text-shadow: 0 4px 8px rgba(0, 0, 0, 0.4), 0 0 20px rgba(250, 204, 55, 0.3); }
+    50% { text-shadow: 0 4px 8px rgba(0, 0, 0, 0.4), 0 0 30px rgba(250, 204, 55, 0.6); }
 }
 
 /* Styles pour la vue des options */
@@ -35,33 +93,61 @@ h1 {
 .view-header h2 {
     margin: 0;
     font-size: 20px;
-    color: #111b21;
+    color: #facc37;
+    font-weight: 600;
 }
 
 .back-button {
-    background: none; border: none; font-size: 24px; cursor: pointer; padding: 0 10px 0 0; color: #667781;
+    background: none; 
+    border: none; 
+    font-size: 24px; 
+    cursor: pointer; 
+    padding: 0 10px 0 0; 
+    color: #ffffff;
+    transition: color 0.2s;
+}
+
+.back-button:hover {
+    color: #facc37;
 }
 /* Fin des styles pour la vue des options */
 
 textarea, input[type="text"] {
     width: 100%;
     padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 14px;
+    border: 2px solid rgba(250, 204, 55, 0.3);
+    border-radius: 8px;
+    font-size: 13px;
     box-sizing: border-box;
     resize: vertical;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1b1d4f;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+textarea:focus, input[type="text"]:focus {
+    outline: none;
+    border-color: #facc37;
+    box-shadow: 0 0 0 3px rgba(250, 204, 55, 0.2);
 }
 
 input[type="number"] {
-    width: 80px;
-    padding: 8px;
-    border: 1px solid #ccc;
+    width: 70px;
+    padding: 6px 10px;
+    border: 2px solid rgba(250, 204, 55, 0.3);
     border-radius: 6px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1b1d4f;
+    transition: border-color 0.3s;
+}
+
+input[type="number"]:focus {
+    outline: none;
+    border-color: #facc37;
 }
 
 textarea {
-    min-height: 100px;
+    min-height: 80px;
 }
 
 #template-manager {
@@ -73,10 +159,17 @@ textarea {
 #template-select {
     flex-grow: 1;
     padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 14px;
-    background-color: white;
+    border: 2px solid rgba(250, 204, 55, 0.3);
+    border-radius: 8px;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1b1d4f;
+    transition: border-color 0.3s;
+}
+
+#template-select:focus {
+    outline: none;
+    border-color: #facc37;
 }
 
 #template-buttons {
@@ -85,42 +178,108 @@ textarea {
 }
 
 .template-action-button {
-    width: 38px;
-    height: 38px;
-    font-size: 20px;
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
     font-weight: bold;
-    border: 1px solid #dadce0;
-    background-color: #f0f2f5;
-    border-radius: 6px;
+    border: 2px solid rgba(250, 204, 55, 0.5);
+    background: rgba(250, 204, 55, 0.1);
+    color: #facc37;
+    border-radius: 10px;
     cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(5px);
+}
+
+.template-action-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.3s;
+}
+
+.template-action-button:hover {
+    background: linear-gradient(135deg, #facc37 0%, #f4c430 100%);
+    color: #1b1d4f;
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 25px rgba(250, 204, 55, 0.4);
+    border-color: #facc37;
+}
+
+.template-action-button:hover::before {
+    left: 100%;
+}
+
+.template-action-button:active {
+    transform: translateY(-1px) scale(1.02);
 }
 
 #send-button {
-    background-color: #00a884; /* Vert WhatsApp */
-    color: white;
-    border: none;
-    padding: 12px;
-    border-radius: 6px;
-    font-size: 16px;
-    font-weight: bold;
+    background: linear-gradient(135deg, #facc37 0%, #f4c430 100%);
+    color: #1b1d4f;
+    border: 2px solid transparent;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 6px 20px rgba(250, 204, 55, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+}
+
+#send-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transition: left 0.3s;
 }
 
 #send-button:hover {
-    background-color: #008a69;
+    background: linear-gradient(135deg, #fdd55a 0%, #facc37 100%);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 30px rgba(250, 204, 55, 0.6);
+    border-color: rgba(250, 204, 55, 0.8);
+}
+
+#send-button:hover::before {
+    left: 100%;
+}
+
+#send-button:active {
+    transform: translateY(-1px) scale(1);
 }
 
 .secondary-button {
-    background-color: #f0f2f5;
-    color: #111b21;
-    border: 1px solid #dadce0;
-    padding: 10px;
-    border-radius: 6px;
-    font-size: 14px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border: 2px solid rgba(250, 204, 55, 0.3);
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 13px;
     cursor: pointer;
-    transition: background-color 0.2s;
-    margin-top: -5px; /* Pour rapprocher du champ contacts */
+    transition: all 0.3s;
+    margin-top: -5px;
+    backdrop-filter: blur(5px);
+}
+
+.secondary-button:hover {
+    background: rgba(250, 204, 55, 0.2);
+    border-color: #facc37;
+    color: #facc37;
 }
 
 #audio-recorder {
@@ -135,52 +294,62 @@ textarea {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background-color: #ffebee;
-    border: 1px solid #e57373;
+    background: rgba(255, 102, 102, 0.2);
+    border: 2px solid #ff6666;
     padding: 8px;
-    border-radius: 6px;
+    border-radius: 8px;
+    backdrop-filter: blur(5px);
 }
 
 .stop-button {
-    background-color: #d32f2f;
+    background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
     color: white;
     border: none;
     padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
+    transition: all 0.3s;
+}
+
+.stop-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
 }
 
 #recording-timer {
     font-family: 'Courier New', Courier, monospace;
     font-weight: bold;
-    color: #c62828;
+    color: #ff6666;
+    background: rgba(255, 102, 102, 0.2);
+    padding: 4px 8px;
+    border-radius: 4px;
 }
 
 .recording-indicator {
     width: 10px;
     height: 10px;
-    background-color: #d32f2f;
+    background-color: #ff4444;
     border-radius: 50%;
     animation: blink 1s infinite;
 }
 
-@keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-
-.secondary-button:hover {
-    background-color: #e8eaed;
+@keyframes blink { 
+    0% { opacity: 1; } 
+    50% { opacity: 0.3; } 
+    100% { opacity: 1; } 
 }
 
 #attachment-preview {
     font-size: 12px;
-    color: #333;
-    background-color: #e9e9e9;
-    padding: 8px;
-    border-radius: 6px;
+    color: #1b1d4f;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 10px;
+    border-radius: 8px;
     text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    border: 1px solid #ccc;
+    border: 2px solid rgba(250, 204, 55, 0.3);
     margin-top: -5px;
 }
 
@@ -196,34 +365,50 @@ textarea {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 4px 8px;
-    background-color: #e0e0e0;
-    border-radius: 4px;
+    padding: 6px 10px;
+    background: rgba(250, 204, 55, 0.1);
+    border-radius: 6px;
     margin-bottom: 4px;
     font-size: 12px;
+    border: 1px solid rgba(250, 204, 55, 0.3);
 }
 
 .remove-file-btn {
-    background: none; border: none; color: #c62828; cursor: pointer; font-weight: bold; font-size: 16px; padding: 0 5px;
+    background: none; 
+    border: none; 
+    color: #ff4444; 
+    cursor: pointer; 
+    font-weight: bold; 
+    font-size: 16px; 
+    padding: 0 5px;
+    transition: color 0.2s;
+}
+
+.remove-file-btn:hover {
+    color: #cc0000;
 }
 
 #send-button:disabled {
-    background-color: #8696a0;
+    background: rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.6);
     cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
 }
 
 #progress-container {
     width: 100%;
-    background-color: #e0e0e0;
-    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
     overflow: hidden;
     margin-top: 5px;
+    border: 1px solid rgba(250, 204, 55, 0.3);
 }
 
 #status {
     margin-top: 10px;
     font-size: 13px;
-    color: #667781;
+    color: #ffffff;
     text-align: center;
     min-height: 20px;
 }
@@ -231,24 +416,31 @@ textarea {
 #progress-bar {
     height: 8px;
     width: 0%;
-    background-color: #00a884;
+    background: linear-gradient(90deg, #facc37 0%, #f4c430 100%);
     transition: width 0.3s ease-in-out;
 }
 
 .error-details {
     margin-top: 10px;
-    padding: 8px;
-    background-color: #ffebee;
-    border: 1px solid #e57373;
-    border-radius: 4px;
-    color: #c62828;
+    padding: 10px;
+    background: rgba(255, 102, 102, 0.2);
+    border: 2px solid #ff6666;
+    border-radius: 8px;
+    color: #ffffff;
     text-align: left;
+    backdrop-filter: blur(5px);
 }
 
 #fix-permission-button {
     margin-top: 10px;
-    border-color: #c62828;
-    color: #c62828;
+    border-color: #ff6666;
+    color: #ff6666;
+    background: rgba(255, 102, 102, 0.1);
+}
+
+#fix-permission-button:hover {
+    background: rgba(255, 102, 102, 0.2);
+    border-color: #ff4444;
 }
 
 #log-controls {
@@ -263,41 +455,43 @@ textarea {
 }
 
 #logs-display {
-    background-color: #202c33; /* Fond sombre WhatsApp */
-    color: #d1d7db; /* Texte clair */
-    padding: 10px;
-    border-radius: 6px;
+    background: rgba(27, 29, 79, 0.8);
+    color: #ffffff;
+    padding: 12px;
+    border-radius: 8px;
     max-height: 200px;
     overflow-y: auto;
     font-size: 11px;
     white-space: pre-wrap;
     word-break: break-all;
+    border: 2px solid rgba(250, 204, 55, 0.3);
+    backdrop-filter: blur(5px);
 }
 
 /* Styles spécifiques aux éléments de la page d'options dans le popup */
 .option-item {
     margin-bottom: 20px;
     padding-bottom: 15px;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid rgba(250, 204, 55, 0.3);
 }
 
 .option-item label {
     display: block;
     font-weight: bold;
     margin-bottom: 8px;
-    color: #333;
+    color: #facc37;
 }
 
 .option-item .description {
     font-size: 12px;
-    color: #667781;
+    color: rgba(255, 255, 255, 0.8);
     margin-top: 5px;
 }
 
 #save-status {
     margin-top: 15px;
     font-weight: bold;
-    color: #00a884;
+    color: #facc37;
     text-align: center;
 }
 
@@ -323,8 +517,9 @@ textarea {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #ccc;
+  background: rgba(255, 255, 255, 0.3);
   transition: .4s;
+  border: 1px solid rgba(250, 204, 55, 0.5);
 }
 
 .slider:before {
@@ -339,7 +534,8 @@ textarea {
 }
 
 input:checked + .slider {
-  background-color: #00a884;
+  background: #facc37;
+  border-color: #facc37;
 }
 
 input:checked + .slider:before {
@@ -353,30 +549,33 @@ input:checked + .slider:before {
 .slider.round:before {
   border-radius: 50%;
 }
-.hidden {
-    display: none !important;
-}
 
 /* --- Styles pour la section d'activation --- */
 #login-section {
-    width: 350px;
+    width: 320px;
     padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 15px;
     box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(250, 204, 55, 0.3);
 }
 
 #login-section h3 {
-    font-size: 20px;
-    color: #111b21;
+    font-size: 18px;
+    color: #facc37;
     text-align: center;
     margin: 0 0 5px 0;
+    font-weight: 600;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 #login-section p {
-    font-size: 14px;
-    color: #667781;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.9);
     text-align: center;
     margin: 0;
 }
@@ -384,26 +583,46 @@ input:checked + .slider:before {
 #login-section input[type="tel"] {
     width: 100%;
     padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    font-size: 14px;
+    border: 2px solid rgba(250, 204, 55, 0.3);
+    border-radius: 8px;
+    font-size: 13px;
     box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1b1d4f;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+#login-section input[type="tel"]:focus {
+    outline: none;
+    border-color: #facc37;
+    box-shadow: 0 0 0 3px rgba(250, 204, 55, 0.2);
 }
 
 #login-section button {
-    background-color: #00a884; /* Vert WhatsApp */
-    color: white;
+    background: linear-gradient(135deg, #facc37 0%, #f4c430 100%);
+    color: #1b1d4f;
     border: none;
     padding: 12px;
-    border-radius: 6px;
-    font-size: 16px;
+    border-radius: 8px;
+    font-size: 15px;
     font-weight: bold;
     cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(250, 204, 55, 0.3);
+}
+
+#login-section button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(250, 204, 55, 0.4);
 }
 
 #error-message {
-    color: #c62828;
+    color: #ff6666;
     font-weight: bold;
     text-align: center;
-    margin-top: -5px; /* Rapprocher du bouton */
+    margin-top: -5px;
+    background: rgba(255, 102, 102, 0.1);
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 102, 102, 0.3);
 }

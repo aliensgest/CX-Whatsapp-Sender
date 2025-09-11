@@ -13,7 +13,7 @@
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icon16.png",
-      "48": "icon48.png",
+      "48": "icon100.png",
       "128": "icon100.png"
     },
     "options_page": "options.html"
@@ -24,17 +24,17 @@
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": ["content.js"]
+      "js": ["lame.min.js", "content.js"]
     }
   ],
   "icons": {
     "16": "icon16.png",
-    "48": "icon48.png",
+    "48": "icon100.png",
     "128": "icon100.png" 
   },
   "web_accessible_resources": [
     {
-      "resources": ["injected-styles.css"],
+      "resources": ["injected-styles.css", "cc-logo.png", "icon48.png", "icon100.png", "lame.min.js", "barre-des-taches.png", "logo-de-la-barre.png"],
       "matches": ["https://web.whatsapp.com/*"]
     }
   ]

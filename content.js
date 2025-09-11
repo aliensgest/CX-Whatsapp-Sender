@@ -2,6 +2,26 @@
 // FONCTIONS UTILITAIRES ROBUSTES
 // =================================================================================================
 
+// Fonction pour créer des icônes SVG simples
+function createIcon(type) {
+    const icons = {
+        rocket: '🚀',
+        clipboard: '📋',
+        users: '👥',
+        settings: '⚙️',
+        robot: '🤖',
+        stop: '⏹️',
+        save: '💾',
+        import: '📊',
+        download: '⬇️',
+        sync: '🔄',
+        edit: '✏️',
+        copy: '📄',
+        check: '✓'
+    };
+    return icons[type] || '●';
+}
+
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
@@ -79,32 +99,82 @@ async function sendAttachmentBatch(files, caption) {
 
     console.log(`[sendAttachmentBatch] Starting batch for ${files.length} files. Type: ${fileType}`);
 
-    // Étape 2/9 : Trouver et cliquer sur le bouton "Joindre" (VOS SÉLECTEURS)
+    // Étape 2/9 : Trouver et cliquer sur le bouton "Joindre" (SÉLECTEURS AMÉLIORÉS)
+    console.log(`[sendAttachmentBatch] Searching for attachment button...`);
     const attachButtonIcon = await waitForElement("span[data-icon='clip'], span[data-icon='plus-rounded']", 10000);
-    const attachButton = attachButtonIcon.closest('button');
-    if (!attachButton) throw new Error("Étape 2/9 : Bouton 'Joindre' parent introuvable.");
+    console.log(`[sendAttachmentBatch] Found attachment icon:`, attachButtonIcon);
+    
+    // Essayer plusieurs types d'éléments parents cliquables
+    let attachButton = attachButtonIcon.closest('button');
+    if (!attachButton) {
+        attachButton = attachButtonIcon.closest('div[role="button"]');
+    }
+    if (!attachButton) {
+        attachButton = attachButtonIcon.closest('[tabindex="0"]');
+    }
+    if (!attachButton) {
+        // Fallback : prendre le parent direct si il est cliquable
+        const parent = attachButtonIcon.parentElement;
+        if (parent && (parent.onclick || parent.getAttribute('role') === 'button')) {
+            attachButton = parent;
+        }
+    }
+    
+    if (!attachButton) {
+        console.error('[sendAttachmentBatch] Attach button parent not found. Icon parent:', attachButtonIcon.parentElement);
+        throw new Error("Étape 2/9 : Bouton 'Joindre' parent introuvable.");
+    }
+    
+    console.log(`[sendAttachmentBatch] Found clickable attach button:`, attachButton);
     attachButton.click();
+    console.log(`[sendAttachmentBatch] Clicked attachment button`);
+    
+    // Attendre que le menu s'ouvre
+    await sleep(1000);
 
-    // Étape 3/9 : Choisir le bon bouton (Média, Audio, ou Document) (VOS SÉLECTEURS)
+    // Étape 3/9 : Choisir le bon bouton (Média, Audio, ou Document) (SÉLECTEURS AMÉLIORÉS)
     let attachmentTypeIconSelector, attachmentTypeName;
     if (isMedia) {
-        attachmentTypeIconSelector = "span[data-icon='media-filled-refreshed']";
+        attachmentTypeIconSelector = "span[data-icon='media-filled-refreshed'], span[data-icon='photos-videos'], span[data-icon='media']";
         attachmentTypeName = 'Photos et vidéos';
     } else if (isAudio) {
-        attachmentTypeIconSelector = "span[data-icon='ic-headphones-filled']";
+        attachmentTypeIconSelector = "span[data-icon='ic-headphones-filled'], span[data-icon='audio'], span[data-icon='headphones']";
         attachmentTypeName = 'Audio';
     } else {
-        attachmentTypeIconSelector = "span[data-icon='document-filled-refreshed']";
+        attachmentTypeIconSelector = "span[data-icon='document-filled-refreshed'], span[data-icon='document'], span[data-icon='attach-document']";
         attachmentTypeName = 'Document';
     }
 
+    console.log(`[sendAttachmentBatch] Searching for ${attachmentTypeName} button...`);
     const typeIcon = await waitForElement(attachmentTypeIconSelector, 5000);
+    console.log(`[sendAttachmentBatch] Found ${attachmentTypeName} icon:`, typeIcon);
 
-    // Étape 4/9 : Trouver l'input de fichier caché
-    const typeButton = typeIcon.closest("li[role='button']");
-    if (!typeButton) throw new Error(`Étape 4/9 : Bouton '${attachmentTypeName}' parent introuvable.`);
+    // Étape 4/9 : Trouver l'input de fichier caché (SÉLECTEURS AMÉLIORÉS)
+    let typeButton = typeIcon.closest("li[role='button']");
+    if (!typeButton) {
+        typeButton = typeIcon.closest("button");
+    }
+    if (!typeButton) {
+        typeButton = typeIcon.closest("div[role='button']");
+    }
+    if (!typeButton) {
+        typeButton = typeIcon.closest("[tabindex='0']");
+    }
+    
+    if (!typeButton) {
+        console.error(`[sendAttachmentBatch] ${attachmentTypeName} button parent not found. Icon parent:`, typeIcon.parentElement);
+        throw new Error(`Étape 4/9 : Bouton '${attachmentTypeName}' parent introuvable.`);
+    }
+    
+    console.log(`[sendAttachmentBatch] Found ${attachmentTypeName} button:`, typeButton);
+    
     const fileInput = typeButton.querySelector("input[type='file']");
-    if (!fileInput) throw new Error(`Étape 4/9 : Input de fichier pour '${attachmentTypeName}' introuvable.`);
+    if (!fileInput) {
+        console.error(`[sendAttachmentBatch] File input not found in ${attachmentTypeName} button:`, typeButton);
+        throw new Error(`Étape 4/9 : Input de fichier pour '${attachmentTypeName}' introuvable.`);
+    }
+    
+    console.log(`[sendAttachmentBatch] Found file input:`, fileInput);
 
     // Étape 5/9 & 6/9 : Assigner les fichiers à l'input
     const dataTransfer = new DataTransfer();
@@ -112,22 +182,49 @@ async function sendAttachmentBatch(files, caption) {
     fileInput.files = dataTransfer.files;
     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // Étape 7/9 : Attendre l'écran de prévisualisation (VOS SÉLECTEURS)
-    const sendIcon = await waitForElement("span[data-icon='send'], span[data-icon='wds-ic-send-filled']", 15000);
-    const sendButtonAttachment = sendIcon.closest('button, div[role="button"]');
-    if (!sendButtonAttachment) throw new Error("Étape 7/9 : Bouton d'envoi final (parent) introuvable.");
+    // Étape 7/9 : Attendre l'écran de prévisualisation (SÉLECTEURS AMÉLIORÉS)
+    console.log(`[sendAttachmentBatch] Waiting for send button in preview...`);
+    const sendIcon = await waitForElement("span[data-icon='send'], span[data-icon='wds-ic-send-filled'], span[data-testid='send'], svg[title='wds-ic-send-filled']", 15000);
+    console.log(`[sendAttachmentBatch] Found send icon:`, sendIcon);
+    
+    let sendButtonAttachment = sendIcon.closest('button');
+    if (!sendButtonAttachment) {
+        sendButtonAttachment = sendIcon.closest('div[role="button"]');
+    }
+    if (!sendButtonAttachment) {
+        sendButtonAttachment = sendIcon.closest('[tabindex="0"]');
+    }
+    if (!sendButtonAttachment) {
+        sendButtonAttachment = sendIcon.closest('[aria-label*="nvoyer"], [aria-label*="Send"]');
+    }
+    
+    if (!sendButtonAttachment) {
+        console.error('[sendAttachmentBatch] Send button parent not found. Icon parent:', sendIcon.parentElement);
+        throw new Error("Étape 7/9 : Bouton d'envoi final (parent) introuvable.");
+    }
+    
+    console.log(`[sendAttachmentBatch] Found send button:`, sendButtonAttachment);
 
-    // Étape 8/9 : Ajouter la légende (VOS SÉLECTEURS)
+    // Étape 8/9 : Ajouter la légende (SÉLECTEURS AMÉLIORÉS)
     if (caption) {
-        const captionBoxSelector = 'div[aria-label*="légende"], div[aria-label*="caption"], div[data-testid="pluggable-input-body"]';
-        const captionBox = await waitForElement(captionBoxSelector, 5000);
-        await typeIn(captionBox, caption);
-        await sleep(500);
+        console.log(`[sendAttachmentBatch] Adding caption: ${caption}`);
+        try {
+            const captionBoxSelector = 'div[aria-label*="légende"], div[aria-label*="caption"], div[data-testid="pluggable-input-body"], div[contenteditable="true"][data-tab="1"], div[role="textbox"]';
+            const captionBox = await waitForElement(captionBoxSelector, 5000);
+            console.log(`[sendAttachmentBatch] Found caption box:`, captionBox);
+            await typeIn(captionBox, caption);
+            await sleep(500);
+        } catch (error) {
+            console.warn(`[sendAttachmentBatch] Could not find caption box, proceeding without caption:`, error.message);
+        }
     }
     
     // Étape 9/9 : Cliquer sur le bouton d'envoi final
+    console.log(`[sendAttachmentBatch] Clicking send button...`);
     sendButtonAttachment.click();
+    console.log(`[sendAttachmentBatch] Send button clicked, waiting 2s...`);
     await sleep(2000);
+    console.log(`[sendAttachmentBatch] Attachment batch sent successfully!`);
 }
 
 
@@ -139,35 +236,59 @@ async function sendAttachmentBatch(files, caption) {
  * @returns {Promise<{success: boolean, reason: string}>} Résultat de l'opération.
  */
 async function processSingleContact(contactName, message, attachmentsData) {
-    // VOS SÉLECTEURS ORIGINAUX
-    const SEARCH_BOX_SELECTOR = 'div[title="Search input box"]';
-    const MESSAGE_BOX_SELECTOR = 'div[title="Type a message"], div[aria-label="Entrez un message"], div[aria-label="Envoyer un message"], div[data-tab="10"][role="textbox"]';
-    const SEND_BUTTON_SELECTOR = 'button[aria-label="Send"], button[aria-label="Envoyer"], button[data-testid="send"]';
-    const CLEAR_SEARCH_SELECTOR = 'button[aria-label="Clear search"]';
+    // SÉLECTEURS AMÉLIORÉS AVEC FALLBACKS
+    const SEARCH_BOX_SELECTOR = 'div[title="Search input text box"], div[title="Search input box"], div[data-testid="chat-list-search"] input, div[role="textbox"][data-tab="3"], input[data-testid="search-input"], div[contenteditable="true"][data-tab="3"]';
+    const MESSAGE_BOX_SELECTOR = 'div[title="Type a message"], div[aria-label="Entrez un message"], div[aria-label="Envoyer un message"], div[data-tab="10"][role="textbox"], div[data-testid="conversation-compose-box-input"], div[contenteditable="true"][data-tab="10"], p[class*="selectable-text"]';
+    const SEND_BUTTON_SELECTOR = 'button[aria-label="Send"], button[aria-label="Envoyer"], button[data-testid="send"], span[data-icon="send"], button[data-tab="11"], div[role="button"][aria-label="Send"], div[role="button"][aria-label="Envoyer"]';
+    const CLEAR_SEARCH_SELECTOR = 'button[aria-label="Clear search"], button[data-testid="search-clear"], div[role="button"][aria-label="Clear search"]';
 
     try {
         console.log(`\n--- Processing Contact: ${contactName} ---`);
 
         // 1. Ouvrir la discussion
-        const isPhoneNumber = /^\+?[0-9\s]+$/.test(contactName);
+        const isPhoneNumber = /^\+?[0-9\s\-]+$/.test(contactName);
+        
         if (isPhoneNumber) {
-            const phoneNumber = contactName.replace(/[\s+]/g, '');
-            console.log(`Opening chat via URL for phone: ${phoneNumber}`);
+            // TOUJOURS utiliser la méthode directe pour les numéros de téléphone
+            const phoneNumber = contactName.replace(/[\s+\-]/g, '');
+            console.log(`[Bulk Send] Opening chat via URL for phone: ${phoneNumber}`);
             const tempLink = document.createElement('a');
             tempLink.href = `https://web.whatsapp.com/send?phone=${phoneNumber}`;
             document.body.appendChild(tempLink);
             tempLink.click();
             document.body.removeChild(tempLink);
             
-            await sleep(2000);
+            await sleep(3000); // Augmenté le délai
+            
+            // Vérifier s'il y a une popup d'erreur
             const errorPopup = document.querySelector("div[data-testid='popup-contents']");
             if (errorPopup && (errorPopup.textContent || '').toLowerCase().includes('invalid')) {
                 document.querySelector("div[data-testid='popup-controls-ok'] button")?.click();
                 throw new Error(`Numéro de téléphone non valide : ${contactName}`);
             }
         } else {
-            console.log(`Searching for contact by name: ${contactName}`);
-            const searchBox = await waitForElement(SEARCH_BOX_SELECTOR);
+            // Seulement pour les noms (pas recommendé en mode bulk)
+            console.log(`[Bulk Send] Searching for contact by name: ${contactName} (NOT RECOMMENDED)`);
+            
+            // Essayer plusieurs sélecteurs pour la boîte de recherche
+            let searchBox = null;
+            const searchSelectors = SEARCH_BOX_SELECTOR.split(', ');
+            
+            for (let selector of searchSelectors) {
+                try {
+                    searchBox = await waitForElement(selector, 2000);
+                    console.log(`Search box found with selector: ${selector}`);
+                    break;
+                } catch (e) {
+                    console.log(`Failed with selector: ${selector}`);
+                    continue;
+                }
+            }
+            
+            if (!searchBox) {
+                throw new Error('Search box not found with any selector');
+            }
+            
             const clearButton = searchBox.closest('div').querySelector(CLEAR_SEARCH_SELECTOR);
             if (clearButton) { clearButton.click(); await sleep(500); }
             await typeIn(searchBox, contactName);
@@ -203,8 +324,9 @@ async function processSingleContact(contactName, message, attachmentsData) {
         });
         
         const mediaAttachments = fileObjects.filter(att => att.type.startsWith('image/') || att.type.startsWith('video/'));
-        const audioAttachments = fileObjects.filter(att => att.type.startsWith('audio/'));
-        const docAttachments = fileObjects.filter(att => !mediaAttachments.includes(att) && !audioAttachments.includes(att));
+        const audioAttachments = fileObjects.filter(att => att.type.startsWith('audio/') && !att.name.endsWith('.ogg'));
+        const voiceAttachments = fileObjects.filter(att => att.type.startsWith('audio/') && att.name.endsWith('.ogg'));
+        const docAttachments = fileObjects.filter(att => !mediaAttachments.includes(att) && !audioAttachments.includes(att) && !voiceAttachments.includes(att));
         let captionSent = false;
 
         // 3. Envoyer les pièces jointes par lots
@@ -215,6 +337,9 @@ async function processSingleContact(contactName, message, attachmentsData) {
         if (audioAttachments.length > 0) {
             await sendAttachmentBatch(audioAttachments, null);
         }
+        if (voiceAttachments.length > 0) {
+            await sendVoiceMessages(voiceAttachments);
+        }
         if (docAttachments.length > 0) {
             await sendAttachmentBatch(docAttachments, null);
         }
@@ -224,9 +349,49 @@ async function processSingleContact(contactName, message, attachmentsData) {
             const messageBox = await waitForElement(MESSAGE_BOX_SELECTOR, 15000);
             await typeIn(messageBox, message);
             await sleep(500);
-            const sendButton = document.querySelector(SEND_BUTTON_SELECTOR);
-            if (!sendButton) throw new Error("Le bouton d'envoi est introuvable.");
-            sendButton.click();
+            
+            // Debug: afficher les éléments disponibles
+            console.log('[DEBUG] Recherche du bouton d\'envoi...');
+            
+            // Recherche améliorée du bouton d'envoi
+            let sendButton = document.querySelector(SEND_BUTTON_SELECTOR);
+            
+            // Méthodes de fallback pour trouver le bouton d'envoi
+            if (!sendButton) {
+                // Méthode 1: Chercher par icône dans les spans
+                sendButton = document.querySelector('span[data-icon="send"]')?.closest('button') ||
+                           document.querySelector('span[data-icon="send"]')?.closest('div[role="button"]');
+            }
+            
+            if (!sendButton) {
+                // Méthode 2: Chercher dans les boutons proches de la zone de message
+                const footer = document.querySelector('footer[data-testid="conversation-compose"]') || 
+                              document.querySelector('div[data-testid="conversation-compose"]') ||
+                              document.querySelector('footer');
+                if (footer) {
+                    sendButton = footer.querySelector('button[type="button"]:last-of-type') ||
+                               footer.querySelector('div[role="button"]:last-of-type');
+                }
+            }
+            
+            if (!sendButton) {
+                // Méthode 3: Utiliser keyboard shortcut comme fallback
+                console.warn("[DEBUG] Bouton d'envoi non trouvé, tentative avec Enter");
+                console.log("[DEBUG] Éléments disponibles:", {
+                    footers: document.querySelectorAll('footer').length,
+                    buttons: document.querySelectorAll('button').length,
+                    sendIcons: document.querySelectorAll('span[data-icon="send"]').length
+                });
+                messageBox.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    keyCode: 13,
+                    bubbles: true,
+                    cancelable: true
+                }));
+            } else {
+                console.log('[DEBUG] Bouton d\'envoi trouvé:', sendButton);
+                sendButton.click();
+            }
         }
 
         await sleep(1000);
@@ -236,6 +401,557 @@ async function processSingleContact(contactName, message, attachmentsData) {
         console.error(`Error processing contact ${contactName}:`, error);
         return { success: false, reason: error.message };
     }
+}
+
+/**
+ * Envoie des fichiers audio .ogg comme des messages vocaux natifs WhatsApp
+ * @param {Array<File>} voiceFiles - Les fichiers audio .ogg à envoyer
+ */
+/**
+ * Convertit un fichier .ogg en .mp3 en utilisant lame.min.js
+ * @param {File} oggFile - Le fichier .ogg à convertir
+ * @returns {Promise<File>} Le fichier .mp3 converti
+ */
+async function convertOggToMp3(oggFile) {
+    return new Promise((resolve, reject) => {
+        console.log(`[convertOggToMp3] Début de conversion: ${oggFile.name}`);
+        
+        const fileReader = new FileReader();
+        fileReader.onload = async function(event) {
+            try {
+                const arrayBuffer = event.target.result;
+                
+                // Décoder le fichier audio OGG
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                console.log(`[convertOggToMp3] Audio décodé - Durée: ${audioBuffer.duration}s, Canaux: ${audioBuffer.numberOfChannels}, Sample Rate: ${audioBuffer.sampleRate}`);
+                
+                // Convertir AudioBuffer en PCM data
+                const pcmData = audioBufferToPCM(audioBuffer);
+                
+                // Initialiser l'encodeur MP3 LAME
+                if (typeof lamejs === 'undefined') {
+                    throw new Error('lame.min.js n\'est pas chargé correctement');
+                }
+                
+                const mp3encoder = new lamejs.Mp3Encoder(audioBuffer.numberOfChannels, audioBuffer.sampleRate, 128); // 128 kbps
+                
+                // Encoder en MP3
+                const blockSize = 1152; // Taille de bloc LAME standard
+                const mp3Data = [];
+                
+                for (let i = 0; i < pcmData.length; i += blockSize) {
+                    const sampleBlockSize = Math.min(blockSize, pcmData.length - i);
+                    const sampleBlock = pcmData.slice(i, i + sampleBlockSize);
+                    
+                    let mp3buf;
+                    if (audioBuffer.numberOfChannels === 1) {
+                        mp3buf = mp3encoder.encodeBuffer(sampleBlock);
+                    } else {
+                        // Pour stéréo, séparer les canaux
+                        const left = new Int16Array(sampleBlockSize / 2);
+                        const right = new Int16Array(sampleBlockSize / 2);
+                        for (let j = 0; j < sampleBlockSize / 2; j++) {
+                            left[j] = sampleBlock[j * 2];
+                            right[j] = sampleBlock[j * 2 + 1];
+                        }
+                        mp3buf = mp3encoder.encodeBuffer(left, right);
+                    }
+                    
+                    if (mp3buf.length > 0) {
+                        mp3Data.push(mp3buf);
+                    }
+                }
+                
+                // Finaliser l'encodage
+                const finalBuffer = mp3encoder.flush();
+                if (finalBuffer.length > 0) {
+                    mp3Data.push(finalBuffer);
+                }
+                
+                // Créer le blob MP3
+                const mp3Blob = new Blob(mp3Data, { type: 'audio/mp3' });
+                const mp3FileName = oggFile.name.replace(/\.ogg$/i, '.mp3');
+                const mp3File = new File([mp3Blob], mp3FileName, { type: 'audio/mp3' });
+                
+                console.log(`[convertOggToMp3] Conversion réussie: ${mp3File.name}, taille: ${mp3File.size} bytes`);
+                resolve(mp3File);
+                
+            } catch (error) {
+                console.error('[convertOggToMp3] Erreur lors de la conversion:', error);
+                reject(error);
+            }
+        };
+        
+        fileReader.onerror = () => {
+            const error = new Error('Erreur lors de la lecture du fichier OGG');
+            console.error('[convertOggToMp3]', error);
+            reject(error);
+        };
+        
+        fileReader.readAsArrayBuffer(oggFile);
+    });
+}
+
+/**
+ * Convertit un AudioBuffer en données PCM Int16
+ * @param {AudioBuffer} audioBuffer 
+ * @returns {Int16Array} Données PCM
+ */
+function audioBufferToPCM(audioBuffer) {
+    const numberOfChannels = audioBuffer.numberOfChannels;
+    const length = audioBuffer.length;
+    const pcmData = new Int16Array(length * numberOfChannels);
+    
+    for (let channel = 0; channel < numberOfChannels; channel++) {
+        const channelData = audioBuffer.getChannelData(channel);
+        for (let i = 0; i < length; i++) {
+            const sample = Math.max(-1, Math.min(1, channelData[i]));
+            pcmData[i * numberOfChannels + channel] = Math.round(sample * 32767);
+        }
+    }
+    
+    return pcmData;
+}
+
+async function sendVoiceMessages(voiceFiles) {
+    if (!voiceFiles || voiceFiles.length === 0) return;
+
+    console.log(`[sendVoiceMessages] Conversion et envoi de ${voiceFiles.length} fichier(s) audio`);
+
+    for (const voiceFile of voiceFiles) {
+        try {
+            console.log(`[sendVoiceMessages] Traitement du fichier: ${voiceFile.name}`);
+            
+            // Convertir .ogg en .mp3 d'abord
+            if (voiceFile.name.toLowerCase().includes('.ogg')) {
+                console.log(`[sendVoiceMessages] Conversion OGG vers MP3 pour: ${voiceFile.name}`);
+                const mp3File = await convertOggToMp3(voiceFile);
+                console.log(`[sendVoiceMessages] Conversion réussie: ${mp3File.name}`);
+                
+                // Envoyer le fichier MP3 comme fichier audio
+                await sendAudioFileDirectly(mp3File);
+                console.log(`[sendVoiceMessages] Fichier MP3 envoyé avec succès: ${mp3File.name}`);
+            } else {
+                // Envoyer directement si ce n'est pas un .ogg
+                await sendAudioFileDirectly(voiceFile);
+                console.log(`[sendVoiceMessages] Fichier audio envoyé directement: ${voiceFile.name}`);
+            }
+            
+        } catch (error) {
+            console.error(`[sendVoiceMessages] Erreur lors du traitement de ${voiceFile.name}:`, error);
+        }
+    }
+}
+
+/**
+ * Envoie un fichier audio directement selon la logique WhatsApp Web
+ * @param {File} audioFile - Le fichier audio à envoyer
+ */
+async function sendAudioFileDirectly(audioFile) {
+    console.log(`[sendAudioFileDirectly] Envoi de ${audioFile.name} comme fichier audio`);
+    
+    // Étape 1: Cliquer sur le bouton d'attachement (plus-rounded)
+    console.log(`[sendAudioFileDirectly] Étape 1: Recherche du bouton d'attachement`);
+    const attachIcon = await waitForElement('span[data-icon="plus-rounded"], span[data-icon="clip"]', 10000);
+    const attachButton = attachIcon.closest('button') || attachIcon.closest('[role="button"]');
+    if (!attachButton) throw new Error("Bouton d'attachement introuvable");
+    
+    console.log(`[sendAudioFileDirectly] Bouton d'attachement trouvé, clic...`);
+    attachButton.click();
+    await sleep(500);
+    
+    // Étape 2: Cliquer sur l'option Audio (ic-headphones-filled)
+    console.log(`[sendAudioFileDirectly] Étape 2: Recherche de l'option Audio`);
+    const audioIcon = await waitForElement('span[data-icon="ic-headphones-filled"]', 5000);
+    const audioLi = audioIcon.closest('li') || audioIcon.closest('[role="button"]');
+    if (!audioLi) throw new Error("Option Audio introuvable");
+    
+    console.log(`[sendAudioFileDirectly] Option Audio trouvée, clic...`);
+    audioLi.click();
+    await sleep(500);
+    
+    // Étape 3: Trouver l'input file et insérer le fichier
+    console.log(`[sendAudioFileDirectly] Étape 3: Recherche de l'input file`);
+    const fileInput = await waitForElement('input[accept*="audio"]', 5000);
+    if (!fileInput) throw new Error("Input file audio introuvable");
+    
+    console.log(`[sendAudioFileDirectly] Input file trouvé, insertion du fichier...`);
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(audioFile);
+    fileInput.files = dataTransfer.files;
+    
+    const changeEvent = new Event('change', { bubbles: true });
+    fileInput.dispatchEvent(changeEvent);
+    await sleep(1500);
+    
+    // Étape 4: Attendre le preview et cliquer sur le bouton d'envoi
+    console.log(`[sendAudioFileDirectly] Étape 4: Recherche du bouton d'envoi`);
+    const sendIcon = await waitForElement('span[data-icon="wds-ic-send-filled"], span[data-icon="send"]', 10000);
+    const sendButton = sendIcon.closest('button') || sendIcon.closest('[role="button"]') || sendIcon.closest('div[role="button"]');
+    if (!sendButton) throw new Error("Bouton d'envoi introuvable");
+    
+    console.log(`[sendAudioFileDirectly] Bouton d'envoi trouvé, envoi...`);
+    sendButton.click();
+    await sleep(2000);
+    
+    console.log(`[sendAudioFileDirectly] Fichier ${audioFile.name} envoyé avec succès !`);
+}
+
+/**
+ * Simule un enregistrement vocal natif WhatsApp en utilisant le bouton microphone
+ * @param {File} audioFile - Le fichier audio à envoyer comme message vocal
+ */
+async function sendAsNativeVoiceMessage(audioFile) {
+    console.log(`[sendAsNativeVoiceMessage] Simulation d'enregistrement vocal natif pour ${audioFile.name}`);
+    
+    // Étape 1: Trouver et cliquer sur le bouton microphone natif de WhatsApp
+    console.log(`[sendAsNativeVoiceMessage] Étape 1: Recherche du bouton microphone...`);
+    const micSelectors = [
+        'span[data-icon="mic-outlined"]',
+        'span[data-icon="mic"]',
+        'span[data-icon="microphone"]',
+        'button[aria-label*="Message vocal" i]',
+        'button[aria-label*="Voice message" i]'
+    ];
+    
+    let micIcon = null;
+    for (const selector of micSelectors) {
+        try {
+            micIcon = await waitForElement(selector, 2000);
+            console.log(`[sendAsNativeVoiceMessage] Bouton microphone trouvé avec: ${selector}`);
+            break;
+        } catch (e) {
+            console.log(`[sendAsNativeVoiceMessage] Sélecteur ${selector} non trouvé`);
+        }
+    }
+    
+    if (!micIcon) {
+        throw new Error("Bouton microphone natif introuvable");
+    }
+    
+    const micButton = micIcon.closest('button');
+    if (!micButton) throw new Error("Bouton microphone parent introuvable");
+    
+    // Étape 2: Intercepter MediaRecorder avant de cliquer
+    console.log(`[sendAsNativeVoiceMessage] Étape 2: Interception de MediaRecorder...`);
+    const originalMediaRecorder = window.MediaRecorder;
+    let recordingStopped = false;
+    
+    // Créer un MediaRecorder simulé qui utilisera notre fichier audio
+    window.MediaRecorder = class MockMediaRecorder extends EventTarget {
+        constructor(stream, options) {
+            super();
+            this.state = 'inactive';
+            this.stream = stream;
+            this.options = options;
+            console.log(`[MockMediaRecorder] Créé avec options:`, options);
+        }
+        
+        start() {
+            console.log(`[MockMediaRecorder] Démarrage de l'enregistrement simulé`);
+            this.state = 'recording';
+            
+            // Déclencher l'événement start
+            setTimeout(() => {
+                this.dispatchEvent(new Event('start'));
+                console.log(`[MockMediaRecorder] Événement 'start' déclenché`);
+            }, 100);
+        }
+        
+        stop() {
+            if (recordingStopped) return;
+            recordingStopped = true;
+            
+            console.log(`[MockMediaRecorder] Arrêt de l'enregistrement simulé`);
+            this.state = 'inactive';
+            
+            // Convertir notre fichier en Blob et l'envoyer
+            setTimeout(async () => {
+                try {
+                    const arrayBuffer = await audioFile.arrayBuffer();
+                    const audioBlob = new Blob([arrayBuffer], { 
+                        type: 'audio/ogg; codecs=opus' 
+                    });
+                    
+                    console.log(`[MockMediaRecorder] Blob créé:`, {
+                        size: audioBlob.size,
+                        type: audioBlob.type
+                    });
+                    
+                    // Déclencher l'événement dataavailable avec notre audio
+                    const dataEvent = new Event('dataavailable');
+                    dataEvent.data = audioBlob;
+                    this.dispatchEvent(dataEvent);
+                    console.log(`[MockMediaRecorder] Événement 'dataavailable' déclenché`);
+                    
+                    // Déclencher l'événement stop
+                    this.dispatchEvent(new Event('stop'));
+                    console.log(`[MockMediaRecorder] Événement 'stop' déclenché`);
+                    
+                } catch (error) {
+                    console.error(`[MockMediaRecorder] Erreur lors de la création du blob:`, error);
+                }
+            }, 500);
+        }
+        
+        pause() {
+            this.state = 'paused';
+        }
+        
+        resume() {
+            this.state = 'recording';
+        }
+    };
+    
+    // Étape 3: Cliquer sur le bouton microphone pour commencer "l'enregistrement"
+    console.log(`[sendAsNativeVoiceMessage] Étape 3: Clic sur le bouton microphone...`);
+    micButton.click();
+    
+    // Attendre un peu pour que l'enregistrement démarre
+    await sleep(1000);
+    
+    // Étape 4: Simuler la fin d'enregistrement en cliquant à nouveau
+    console.log(`[sendAsNativeVoiceMessage] Étape 4: Arrêt de l'enregistrement...`);
+    
+    // Chercher le bouton d'arrêt (qui peut être le même bouton mais avec un état différent)
+    try {
+        const stopButton = await waitForElement('button[aria-label*="Arrêter" i], button[aria-label*="Stop" i], span[data-icon="mic-filled"]', 3000);
+        const stopButtonElement = stopButton.closest ? stopButton.closest('button') : stopButton;
+        if (stopButtonElement) {
+            stopButtonElement.click();
+        }
+    } catch (e) {
+        // Si on ne trouve pas le bouton d'arrêt spécifique, recliquer sur le bouton micro
+        console.log(`[sendAsNativeVoiceMessage] Bouton d'arrêt non trouvé, reclic sur le microphone`);
+        micButton.click();
+    }
+    
+    // Étape 5: Attendre que le message soit traité et restaurer MediaRecorder
+    setTimeout(() => {
+        console.log(`[sendAsNativeVoiceMessage] Restauration de MediaRecorder original`);
+        window.MediaRecorder = originalMediaRecorder;
+    }, 3000);
+    
+    console.log(`[sendAsNativeVoiceMessage] Message vocal natif simulé envoyé !`);
+}
+
+/**
+ * Envoie un fichier comme message vocal en utilisant les méthodes existantes
+ */
+async function sendAsVoiceMessage(audioFile) {
+    console.log(`[sendAsVoiceMessage] Envoi de ${audioFile.name} comme message vocal`);
+    
+    // Méthode 1: Essayer d'utiliser l'enregistreur vocal natif de WhatsApp
+    try {
+        await sendAsNativeVoiceMessage(audioFile);
+        console.log(`[sendAsVoiceMessage] Message vocal natif envoyé: ${audioFile.name}`);
+        return;
+    } catch (voiceError) {
+        console.log(`[sendAsVoiceMessage] Échec de l'envoi vocal natif, tentative via MediaRecorder API`);
+        
+        // Méthode 2: Utiliser MediaRecorder API pour simuler un enregistrement
+        try {
+            await sendViaMediaRecorder(audioFile);
+            console.log(`[sendAsVoiceMessage] Message vocal envoyé via MediaRecorder: ${audioFile.name}`);
+            return;
+        } catch (mediaError) {
+            console.log(`[sendAsVoiceMessage] Échec MediaRecorder, envoi comme fichier audio`);
+            
+            // Méthode 3: Fallback - envoyer comme fichier audio normal
+            await sendAsAudioFile(audioFile);
+            console.log(`[sendAsVoiceMessage] Envoyé comme fichier audio: ${audioFile.name}`);
+        }
+    }
+}
+
+/**
+ * Tente d'envoyer le fichier comme un message vocal natif WhatsApp
+ */
+async function sendAsNativeVoiceMessage(voiceFile) {
+    // Cliquer sur le bouton microphone avec sélecteurs multiples
+    console.log("[sendAsNativeVoiceMessage] Recherche du bouton microphone...");
+    const micSelectors = [
+        "span[data-icon='mic']",
+        "span[data-icon='microphone']", 
+        "span[data-icon='wds-ic-mic']",
+        "span[data-icon='ptt-v2']",
+        "svg[aria-label*='microphone' i]",
+        "svg[title*='microphone' i]",
+        "button[aria-label*='microphone' i]",
+        "button[aria-label*='voice' i]",
+        "[data-testid='ptt-button']"
+    ];
+    
+    let micButton = null;
+    for (const selector of micSelectors) {
+        try {
+            micButton = await waitForElement(selector, 2000);
+            console.log(`[sendAsNativeVoiceMessage] Bouton microphone trouvé avec: ${selector}`);
+            break;
+        } catch (e) {
+            console.log(`[sendAsNativeVoiceMessage] Sélecteur ${selector} non trouvé`);
+        }
+    }
+    
+    if (!micButton) {
+        throw new Error("Bouton microphone introuvable avec tous les sélecteurs");
+    }
+    
+    const micButtonElement = micButton.closest('button') || micButton.closest('[role="button"]') || micButton;
+    if (!micButtonElement) throw new Error("Élément bouton microphone introuvable");
+    
+    // Intercepter l'API MediaRecorder de WhatsApp
+    const originalMediaRecorder = window.MediaRecorder;
+    let recordingStarted = false;
+    
+    // Créer un mock de MediaRecorder qui utilisera notre fichier
+    window.MediaRecorder = class MockMediaRecorder extends EventTarget {
+        constructor(stream, options) {
+            super();
+            this.state = 'inactive';
+            this.stream = stream;
+            this.options = options;
+            console.log('[MockMediaRecorder] Créé avec options:', options);
+        }
+        
+        start() {
+            console.log('[MockMediaRecorder] Démarrage de l\'enregistrement');
+            this.state = 'recording';
+            recordingStarted = true;
+            
+            // Simuler le début d'enregistrement
+            setTimeout(() => {
+                this.dispatchEvent(new Event('start'));
+            }, 100);
+            
+            // Simuler la fin d'enregistrement avec notre fichier
+            setTimeout(async () => {
+                this.state = 'inactive';
+                
+                // Créer un Blob à partir de notre fichier converti (MP3 ou OGG)
+                const arrayBuffer = await voiceFile.arrayBuffer();
+                const blob = new Blob([arrayBuffer], { 
+                    type: voiceFile.type || 'audio/ogg; codecs=opus' 
+                });
+                
+                // Dispatch l'événement dataavailable avec notre fichier
+                const dataEvent = new Event('dataavailable');
+                dataEvent.data = blob;
+                this.dispatchEvent(dataEvent);
+                
+                // Dispatch l'événement stop
+                this.dispatchEvent(new Event('stop'));
+            }, 1000); // Simuler 1 seconde d'enregistrement
+        }
+        
+        stop() {
+            console.log('[MockMediaRecorder] Arrêt de l\'enregistrement');
+            this.state = 'inactive';
+        }
+    };
+    
+    // Démarrer l'enregistrement
+    micButtonElement.click();
+    await sleep(500);
+    
+    // Attendre que l'enregistrement soit traité
+    await new Promise(resolve => {
+        const checkRecording = () => {
+            if (recordingStarted) {
+                resolve();
+            } else {
+                setTimeout(checkRecording, 100);
+            }
+        };
+        checkRecording();
+    });
+    
+    // Attendre que l'interface d'envoi apparaisse et cliquer sur envoyer
+    await sleep(2000);
+    
+    // Chercher le bouton d'envoi du message vocal
+    const sendVoiceButton = await waitForElement("span[data-icon='send']", 5000);
+    const sendVoiceButtonElement = sendVoiceButton.closest('button');
+    if (sendVoiceButtonElement) {
+        sendVoiceButtonElement.click();
+        await sleep(1000);
+    }
+    
+    // Restaurer MediaRecorder original
+    window.MediaRecorder = originalMediaRecorder;
+}
+
+/**
+ * Utilise MediaRecorder API pour simuler un enregistrement
+ */
+/**
+ * Fallback: envoie comme fichier audio normal (pièce jointe)
+ */
+async function sendAsAudioFile(voiceFile) {
+    console.log(`[sendAsAudioFile] Envoi de ${voiceFile.name} comme fichier audio`);
+    
+    // Cliquer sur le bouton d'attachement
+    const attachButtonIcon = await waitForElement("span[data-icon='clip'], span[data-icon='plus-rounded']", 10000);
+    const attachButton = attachButtonIcon.closest('button') || attachButtonIcon.closest('[role="button"]');
+    if (!attachButton) throw new Error("Bouton 'Joindre' introuvable");
+    attachButton.click();
+    await sleep(500);
+
+    // Sélectionner le type Audio avec plusieurs sélecteurs
+    console.log("[sendAsAudioFile] Recherche de l'option Audio...");
+    const audioSelectors = [
+        "span[data-icon='ic-headphones-filled']",
+        "span[data-icon='headphones']",
+        "span[data-icon='audio']", 
+        "span[data-icon='wds-ic-headphones']",
+        "svg[aria-label*='audio' i]",
+        "svg[title*='audio' i]"
+    ];
+    
+    let audioTypeIcon = null;
+    for (const selector of audioSelectors) {
+        try {
+            audioTypeIcon = await waitForElement(selector, 2000);
+            console.log(`[sendAsAudioFile] Option Audio trouvée avec: ${selector}`);
+            break;
+        } catch (e) {
+            console.log(`[sendAsAudioFile] Sélecteur ${selector} non trouvé`);
+        }
+    }
+    
+    if (!audioTypeIcon) {
+        throw new Error("Option 'Audio' introuvable avec tous les sélecteurs");
+    }
+    
+    const audioTypeButton = audioTypeIcon.closest('button') || audioTypeIcon.closest('div[role="button"]') || audioTypeIcon.closest('div');
+    if (!audioTypeButton) throw new Error("Bouton option 'Audio' introuvable");
+    audioTypeButton.click();
+    await sleep(500);
+
+    // Attendre que l'input file apparaisse
+    const fileInput = await waitForElement('input[type="file"]', 5000);
+    if (!fileInput) throw new Error("Input file introuvable");
+
+    // Créer un DataTransfer pour simuler la sélection de fichier
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(voiceFile);
+    fileInput.files = dataTransfer.files;
+
+    // Déclencher l'événement change
+    const changeEvent = new Event('change', { bubbles: true });
+    fileInput.dispatchEvent(changeEvent);
+    
+    await sleep(1500);
+
+    // Attendre et cliquer sur le bouton d'envoi
+    const sendButton = await waitForElement("span[data-icon='send']", 10000);
+    const sendButtonElement = sendButton.closest('button');
+    if (!sendButtonElement) throw new Error("Bouton d'envoi introuvable");
+    
+    sendButtonElement.click();
+    await sleep(2000);
 }
 
 
@@ -382,7 +1098,9 @@ function injectToolbar(isActive) {
     if (isActive) {
         toolbar.innerHTML = `
             <div class="cx-toolbar-left-content">
-                <div class="cx-toolbar-brand">CX Sender</div>
+                <div class="cx-toolbar-brand">
+                    <img src="${chrome.runtime.getURL('cc-logo.png')}" alt="CX Logo" style="width: 24px; height: 24px;">
+                </div>
                 <div class="cx-toolbar-actions">
                     <button id="cx-send-bulk-btn" class="cx-toolbar-btn">🚀 Envoi en masse</button>
                     <button id="cx-manage-templates-btn" class="cx-toolbar-btn">📋 Gérer les modèles</button>
@@ -396,7 +1114,9 @@ function injectToolbar(isActive) {
         toolbar.classList.add('cx-toolbar-inactive');
         toolbar.innerHTML = `
             <div class="cx-toolbar-left-content">
-                <div class="cx-toolbar-brand">CX Sender</div>
+                <div class="cx-toolbar-brand">
+                    <img src="${chrome.runtime.getURL('cc-logo.png')}" alt="CX Logo" style="width: 24px; height: 24px;">
+                </div>
                 <div class="cx-inactive-message">
                     Veuillez cliquer sur l'icône de l'extension pour l'activer et utiliser ses fonctionnalités.
                 </div>
@@ -532,7 +1252,31 @@ function injectBulkSendModal() {
                 <div class="cx-modal-section">
                     <label>Listes de contacts</label>
                     <select id="cx-modal-contact-list-select"><option value="">Sélectionner une liste</option></select>
-                    <textarea id="cx-modal-contacts" placeholder="Copiez-collez les contacts, séparés par des virgules ou des sauts de ligne..."></textarea>
+                    
+                    <!-- Tableau de contacts pour l'envoi en masse -->
+                    <div id="cx-modal-contact-table-container">
+                        <div id="cx-modal-contact-table-header">
+                            <div class="cx-table-controls">
+                                <button id="cx-modal-add-contact-btn" class="cx-table-btn">➕ Ajouter contact</button>
+                                <button id="cx-modal-clear-contacts-btn" class="cx-table-btn">🗑️ Vider la liste</button>
+                            </div>
+                        </div>
+                        <div id="cx-modal-contact-table-wrapper">
+                            <table id="cx-modal-contact-table">
+                                <thead>
+                                    <tr>
+                                        <th>Numéro de téléphone</th>
+                                        <th>Nom complet</th>
+                                        <th>Adresse email</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cx-modal-contact-table-body">
+                                    <!-- Les contacts seront ajoutés ici dynamiquement -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div id="cx-modal-footer">
@@ -586,17 +1330,56 @@ function injectBulkSendModal() {
 
     document.getElementById('cx-modal-contact-list-select').addEventListener('change', async (e) => {
         const listName = e.target.value;
-        const contactsTextarea = document.getElementById('cx-modal-contacts');
         
         if (!listName) {
-            contactsTextarea.value = '';
+            clearModalContactTable();
             return;
         }
         
         const { contactLists = {} } = await chrome.storage.local.get('contactLists');
-        const contacts = contactLists[listName] || '';
-        contactsTextarea.value = contacts;
+        const listData = contactLists[listName];
+        
+        if (!listData) {
+            clearModalContactTable();
+            return;
+        }
+        
+        // Vider le tableau actuel
+        clearModalContactTable();
+        
+        // Nouveau format (objet avec tableau de contacts)
+        if (typeof listData === 'object' && listData.format === 'table' && listData.contacts) {
+            // Charger les contacts dans le tableau
+            listData.contacts.forEach(contact => {
+                if (contact.phone && contact.phone.trim()) {
+                    addModalContactRow(contact.phone || '', contact.name || '', contact.email || '');
+                }
+            });
+        }
+        // Ancien format (chaîne de numéros)
+        else if (typeof listData === 'string') {
+            const phones = listData.split('\n').map(p => p.trim()).filter(p => p);
+            phones.forEach(phone => {
+                addModalContactRow(phone, '', '');
+            });
+        }
+        
+        // Ajouter une ligne vide à la fin pour permettre l'ajout de nouveaux contacts
+        addModalContactRow('', '', '');
     });
+
+    // Event listeners pour les boutons du tableau
+    document.getElementById('cx-modal-add-contact-btn').addEventListener('click', () => {
+        addModalContactRow('', '', '');
+    });
+
+    document.getElementById('cx-modal-clear-contacts-btn').addEventListener('click', () => {
+        clearModalContactTable();
+        addModalContactRow('', '', ''); // Ajouter une ligne vide
+    });
+
+    // Initialiser le tableau avec une ligne vide
+    addModalContactRow('', '', '');
 }
 
 /**
@@ -604,12 +1387,14 @@ function injectBulkSendModal() {
  */
 async function handleModalSend() {
     const messageTextarea = document.getElementById('cx-modal-message');
-    const contactsTextarea = document.getElementById('cx-modal-contacts');
     const statusDiv = document.getElementById('cx-modal-status');
     const sendBtn = document.getElementById('cx-modal-send-btn');
 
     const message = messageTextarea.value.trim();
-    const contactsText = contactsTextarea.value.trim();
+    
+    // Récupérer les contacts depuis le nouveau tableau
+    const contactsFromTable = getModalContactsFromTable();
+    console.log('Contacts récupérés du tableau:', contactsFromTable);
 
     if (!message && attachmentsForCurrentSend.length === 0) {
         statusDiv.textContent = 'Veuillez saisir un message ou sélectionner un modèle avec des pièces jointes.';
@@ -617,16 +1402,18 @@ async function handleModalSend() {
         return;
     }
 
-    if (!contactsText) {
-        statusDiv.textContent = 'Veuillez saisir des contacts.';
+    if (contactsFromTable.length === 0) {
+        statusDiv.textContent = 'Veuillez ajouter des contacts dans le tableau.';
         statusDiv.style.color = '#d32f2f';
         return;
     }
 
-    // Parse les contacts
-    const contacts = contactsText.split(/[,\n]/).map(c => c.trim()).filter(c => c);
+    // Filtrer les contacts avec un numéro de téléphone valide (garder l'objet complet)
+    const contacts = contactsFromTable.filter(contact => contact.phone && contact.phone.trim());
+    console.log('Contacts filtrés pour envoi:', contacts);
+    
     if (contacts.length === 0) {
-        statusDiv.textContent = 'Aucun contact valide trouvé.';
+        statusDiv.textContent = 'Aucun numéro de téléphone valide trouvé.';
         statusDiv.style.color = '#d32f2f';
         return;
     }
@@ -653,13 +1440,22 @@ async function handleModalSend() {
         // Traiter chaque contact
         for (let i = 0; i < contacts.length; i++) {
             const contact = contacts[i];
-            statusDiv.textContent = `Envoi ${i + 1}/${contacts.length} : ${contact}...`;
             
-            const result = await processSingleContact(contact, message, attachmentsForCurrentSend);
+            // TOUJOURS utiliser le numéro de téléphone pour l'envoi, même si on a un nom
+            const phoneNumber = contact.phone;
+            
+            // Afficher le nom si disponible, sinon le numéro (juste pour l'affichage)
+            const displayName = contact.name || contact.phone;
+            statusDiv.textContent = `Envoi ${i + 1}/${contacts.length} : ${displayName}...`;
+            
+            console.log(`[Bulk Send] Envoi vers numéro: ${phoneNumber} (affiché comme: ${displayName})`);
+            
+            // IMPORTANT: Toujours passer le numéro de téléphone, jamais le nom
+            const result = await processSingleContact(phoneNumber, message, attachmentsForCurrentSend);
             if (result.success) {
                 successCount++;
             } else {
-                errorDetails.push(`${contact}: ${result.reason}`);
+                errorDetails.push(`${displayName}: ${result.reason}`);
             }
             
             // Attendre entre les envois (sauf pour le dernier)
@@ -1160,7 +1956,36 @@ function injectContactListsModal() {
                 <div id="cx-contact-list-editor-container">
                     <h3>Éditeur de liste</h3>
                     <input type="text" id="cx-contact-list-name-input" placeholder="Nom de la liste...">
-                    <textarea id="cx-contact-list-content-textarea" placeholder="Numéros de téléphone, un par ligne..."></textarea>
+                    
+                    <!-- Nouvelle interface table -->
+                    <div id="cx-contact-table-container">
+                        <div id="cx-contact-table-header">
+                            <div class="cx-table-controls">
+                                <button id="cx-add-contact-btn" class="cx-table-btn">➕ Ajouter contact</button>
+                                <button id="cx-import-csv-btn" class="cx-table-btn">📊 Importer CSV</button>
+                                <button id="cx-export-csv-btn" class="cx-table-btn">⬇️ Exporter CSV</button>
+                            </div>
+                        </div>
+                        <div id="cx-contact-table-wrapper">
+                            <table id="cx-contact-table">
+                                <thead>
+                                    <tr>
+                                        <th>Numéro de téléphone</th>
+                                        <th>Nom complet</th>
+                                        <th>Adresse email</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cx-contact-table-body">
+                                    <!-- Les contacts seront ajoutés ici dynamiquement -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Champ caché pour compatibilité avec l'ancien format -->
+                    <textarea id="cx-contact-list-content-textarea" style="display: none;"></textarea>
+                    
                     <div id="cx-contact-list-editor-actions">
                         <button id="cx-contact-list-save-btn">Enregistrer</button>
                         <button id="cx-contact-list-new-btn" class="secondary">Nouveau</button>
@@ -1168,6 +1993,9 @@ function injectContactListsModal() {
                 </div>
             </div>
         </div>
+        
+        <!-- Input caché pour l'import CSV -->
+        <input type="file" id="cx-csv-import-input" accept=".csv" style="display: none;">
     `;
     document.body.appendChild(modal);
 
@@ -1177,6 +2005,10 @@ function injectContactListsModal() {
     const saveBtn = document.getElementById('cx-contact-list-save-btn');
     const newBtn = document.getElementById('cx-contact-list-new-btn');
     const listUI = document.getElementById('cx-contact-lists-list');
+    const addContactBtn = document.getElementById('cx-add-contact-btn');
+    const importCsvBtn = document.getElementById('cx-import-csv-btn');
+    const exportCsvBtn = document.getElementById('cx-export-csv-btn');
+    const csvInput = document.getElementById('cx-csv-import-input');
 
     closeBtn.addEventListener('click', closeContactListsModal);
     overlay.addEventListener('click', (e) => {
@@ -1185,22 +2017,50 @@ function injectContactListsModal() {
 
     newBtn.addEventListener('click', () => {
         document.getElementById('cx-contact-list-name-input').value = '';
-        document.getElementById('cx-contact-list-content-textarea').value = '';
+        clearContactTable();
         document.getElementById('cx-contact-list-name-input').readOnly = false;
         document.getElementById('cx-contact-list-name-input').focus();
         listUI.querySelector('li.selected')?.classList.remove('selected');
     });
 
+    addContactBtn.addEventListener('click', () => {
+        addContactRow('', '', '');
+    });
+
+    importCsvBtn.addEventListener('click', () => {
+        csvInput.click();
+    });
+
+    exportCsvBtn.addEventListener('click', () => {
+        exportContactsToCSV();
+    });
+
+    csvInput.addEventListener('change', (e) => {
+        if (e.target.files[0]) {
+            importContactsFromCSV(e.target.files[0]);
+        }
+    });
+
     saveBtn.addEventListener('click', async () => {
         const name = document.getElementById('cx-contact-list-name-input').value.trim();
-        const content = document.getElementById('cx-contact-list-content-textarea').value.trim();
         if (!name) return alert('Le nom de la liste est requis.');
 
+        const contacts = getContactsFromTable();
+        console.log('Contacts à sauvegarder:', contacts);
         const { contactLists = {} } = await chrome.storage.local.get('contactLists');
-        contactLists[name] = content;
+        
+        // Nouveau format : objet avec les données structurées
+        contactLists[name] = {
+            format: 'table',
+            contacts: contacts,
+            // Compatibilité rétroactive : génération du format texte
+            textFormat: contacts.map(c => c.phone).join('\n')
+        };
+        
+        console.log('Liste sauvegardée:', contactLists[name]);
         await chrome.storage.local.set({ contactLists });
         await renderContactListsInModal();
-        alert(`Liste "${name}" enregistrée !`);
+        alert(`Liste "${name}" enregistrée avec ${contacts.length} contact(s) !`);
     });
 
     listUI.addEventListener('click', async (e) => {
@@ -1220,7 +2080,12 @@ function injectContactListsModal() {
             const { contactLists = {} } = await chrome.storage.local.get('contactLists');
             document.getElementById('cx-contact-list-name-input').value = listName;
             document.getElementById('cx-contact-list-name-input').readOnly = true;
-            document.getElementById('cx-contact-list-content-textarea').value = contactLists[listName] || '';
+            
+            console.log('Chargement de la liste:', listName, contactLists[listName]);
+            
+            // Charger les données dans le tableau
+            loadContactsToTable(contactLists[listName]);
+            
             listUI.querySelector('li.selected')?.classList.remove('selected');
             listItem.classList.add('selected');
         }
@@ -1239,6 +2104,283 @@ function closeContactListsModal() {
     document.getElementById('cx-contact-lists-modal-overlay')?.classList.add('cx-modal-hidden');
 }
 
+// === NOUVELLES FONCTIONS POUR LA GESTION DES TABLES DE CONTACTS ===
+
+/**
+ * Ajoute une nouvelle ligne de contact dans le tableau
+ */
+function addContactRow(phone = '', name = '', email = '') {
+    const tbody = document.getElementById('cx-contact-table-body');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="text" class="cx-contact-phone" value="${phone}" placeholder="+212XXXXXXXXX"></td>
+        <td><input type="text" class="cx-contact-name" value="${name}" placeholder="Nom Prénom"></td>
+        <td><input type="email" class="cx-contact-email" value="${email}" placeholder="email@exemple.com"></td>
+        <td>
+            <button class="cx-delete-contact-btn" title="Supprimer">🗑️</button>
+        </td>
+    `;
+    tbody.appendChild(row);
+
+    // Événement pour supprimer la ligne
+    row.querySelector('.cx-delete-contact-btn').addEventListener('click', () => {
+        row.remove();
+        checkTableScrollable(); // Vérifier après suppression
+    });
+
+    // Auto-formatage du numéro de téléphone
+    const phoneInput = row.querySelector('.cx-contact-phone');
+    phoneInput.addEventListener('input', (e) => {
+        let value = e.target.value.replace(/[^\d+]/g, '');
+        if (value && !value.startsWith('+')) {
+            if (value.startsWith('0')) {
+                value = '+212' + value.substring(1);
+            } else if (!value.startsWith('212')) {
+                value = '+212' + value;
+            } else {
+                value = '+' + value;
+            }
+        }
+        e.target.value = value;
+    });
+
+    // Vérifier si le tableau nécessite un scroll
+    checkTableScrollable();
+}
+
+/**
+ * Vérifie si le tableau nécessite un scroll et applique la classe appropriée
+ */
+function checkTableScrollable() {
+    const wrapper = document.getElementById('cx-contact-table-wrapper');
+    if (wrapper) {
+        const isScrollable = wrapper.scrollHeight > wrapper.clientHeight;
+        wrapper.classList.toggle('scrollable-content', isScrollable);
+    }
+}
+
+/**
+ * Vide le tableau de contacts
+ */
+function clearContactTable() {
+    const tbody = document.getElementById('cx-contact-table-body');
+    tbody.innerHTML = '';
+    checkTableScrollable(); // Vérifier après vidage
+}
+
+/**
+ * Récupère tous les contacts du tableau
+ */
+function getContactsFromTable() {
+    const rows = document.querySelectorAll('#cx-contact-table-body tr');
+    const contacts = [];
+    
+    rows.forEach(row => {
+        const phone = row.querySelector('.cx-contact-phone').value.trim();
+        const name = row.querySelector('.cx-contact-name').value.trim();
+        const email = row.querySelector('.cx-contact-email').value.trim();
+        
+        if (phone) { // Au minimum, le numéro est requis
+            contacts.push({ phone, name, email });
+        }
+    });
+    
+    return contacts;
+}
+
+/**
+ * Charge les contacts dans le tableau
+ */
+function loadContactsToTable(listData) {
+    clearContactTable();
+    
+    if (!listData) return;
+    
+    let contacts = [];
+    
+    // Nouveau format (objet avec tableau de contacts)
+    if (typeof listData === 'object' && listData.format === 'table' && listData.contacts) {
+        contacts = listData.contacts;
+    }
+    // Ancien format (chaîne de numéros)
+    else if (typeof listData === 'string') {
+        const phones = listData.split('\n').map(p => p.trim()).filter(p => p);
+        contacts = phones.map(phone => ({ phone, name: '', email: '' }));
+    }
+    
+    // Ajouter les contacts au tableau
+    contacts.forEach(contact => {
+        addContactRow(contact.phone || '', contact.name || '', contact.email || '');
+    });
+    
+    // S'il n'y a pas de contacts, ajouter une ligne vide
+    if (contacts.length === 0) {
+        addContactRow();
+    }
+}
+
+/**
+ * Import CSV
+ */
+async function importContactsFromCSV(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const csv = e.target.result;
+                const lines = csv.split('\n').filter(line => line.trim());
+                
+                // Vider le tableau actuel
+                clearContactTable();
+                
+                lines.forEach((line, index) => {
+                    const columns = line.split(',').map(col => col.trim().replace(/"/g, ''));
+                    
+                    // Ignorer la ligne d'en-tête si elle contient des mots clés
+                    if (index === 0 && (columns[0].toLowerCase().includes('tel') || columns[0].toLowerCase().includes('phone'))) {
+                        return;
+                    }
+                    
+                    const phone = columns[0] || '';
+                    const name = columns[1] || '';
+                    const email = columns[2] || '';
+                    
+                    if (phone) {
+                        addContactRow(phone, name, email);
+                    }
+                });
+                
+                // Ajouter une ligne vide à la fin
+                addContactRow();
+                
+                // Vérifier si le tableau nécessite un scroll après import
+                checkTableScrollable();
+                
+                alert(`${lines.length} contact(s) importé(s) depuis le fichier CSV.`);
+                resolve();
+            } catch (error) {
+                alert('Erreur lors de l\'import CSV : ' + error.message);
+                reject(error);
+            }
+        };
+        reader.readAsText(file);
+    });
+}
+
+/**
+ * Export CSV
+ */
+function exportContactsToCSV() {
+    const contacts = getContactsFromTable();
+    
+    if (contacts.length === 0) {
+        alert('Aucun contact à exporter.');
+        return;
+    }
+    
+    // Créer le contenu CSV
+    let csv = 'Numero telephone,Nom complet,Adresse email\n';
+    contacts.forEach(contact => {
+        csv += `"${contact.phone}","${contact.name}","${contact.email}"\n`;
+    });
+    
+    // Télécharger le fichier
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    
+    const listName = document.getElementById('cx-contact-list-name-input').value.trim() || 'contacts';
+    link.download = `${listName}_contacts.csv`;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// === FONCTIONS POUR LE TABLEAU DU MODAL D'ENVOI EN MASSE ===
+
+/**
+ * Ajoute une nouvelle ligne de contact dans le tableau du modal
+ */
+function addModalContactRow(phone = '', name = '', email = '') {
+    const tbody = document.getElementById('cx-modal-contact-table-body');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="text" class="cx-modal-contact-phone" value="${phone}" placeholder="+212XXXXXXXXX"></td>
+        <td><input type="text" class="cx-modal-contact-name" value="${name}" placeholder="Nom Prénom"></td>
+        <td><input type="email" class="cx-modal-contact-email" value="${email}" placeholder="email@exemple.com"></td>
+        <td>
+            <button class="cx-modal-delete-contact-btn" title="Supprimer">🗑️</button>
+        </td>
+    `;
+    tbody.appendChild(row);
+
+    // Événement pour supprimer la ligne
+    row.querySelector('.cx-modal-delete-contact-btn').addEventListener('click', () => {
+        row.remove();
+        checkModalTableScrollable();
+    });
+
+    // Auto-formatage du numéro de téléphone
+    const phoneInput = row.querySelector('.cx-modal-contact-phone');
+    phoneInput.addEventListener('input', (e) => {
+        let value = e.target.value.replace(/[^\d+]/g, '');
+        if (value && !value.startsWith('+')) {
+            if (value.startsWith('0')) {
+                value = '+212' + value.substring(1);
+            } else if (!value.startsWith('212')) {
+                value = '+212' + value;
+            } else {
+                value = '+' + value;
+            }
+        }
+        e.target.value = value;
+    });
+
+    // Vérifier si le tableau nécessite un scroll
+    checkModalTableScrollable();
+}
+
+/**
+ * Vide le tableau de contacts du modal
+ */
+function clearModalContactTable() {
+    const tbody = document.getElementById('cx-modal-contact-table-body');
+    tbody.innerHTML = '';
+    checkModalTableScrollable();
+}
+
+/**
+ * Récupère tous les contacts du tableau du modal
+ */
+function getModalContactsFromTable() {
+    const rows = document.querySelectorAll('#cx-modal-contact-table-body tr');
+    const contacts = [];
+    
+    rows.forEach(row => {
+        const phone = row.querySelector('.cx-modal-contact-phone').value.trim();
+        const name = row.querySelector('.cx-modal-contact-name').value.trim();
+        const email = row.querySelector('.cx-modal-contact-email').value.trim();
+        
+        if (phone) { // Seuls les contacts avec numéro de téléphone
+            contacts.push({ phone, name, email });
+        }
+    });
+    
+    return contacts;
+}
+
+/**
+ * Vérifie si le tableau du modal nécessite un scroll
+ */
+function checkModalTableScrollable() {
+    const wrapper = document.getElementById('cx-modal-contact-table-wrapper');
+    if (wrapper) {
+        const isScrollable = wrapper.scrollHeight > wrapper.clientHeight;
+        wrapper.classList.toggle('scrollable-content', isScrollable);
+    }
+}
+
 async function renderContactListsInModal() {
     const { contactLists = {} } = await chrome.storage.local.get('contactLists');
     const listElement = document.getElementById('cx-contact-lists-list');
@@ -1251,9 +2393,19 @@ async function renderContactListsInModal() {
     }
 
     for (const name in contactLists) {
+        const listData = contactLists[name];
+        let contactCount = 0;
+        
+        // Compter les contacts selon le format
+        if (typeof listData === 'object' && listData.format === 'table' && listData.contacts) {
+            contactCount = listData.contacts.length;
+        } else if (typeof listData === 'string') {
+            contactCount = listData.split('\n').filter(line => line.trim()).length;
+        }
+        
         const listItem = document.createElement('li');
         listItem.dataset.listName = name;
-        listItem.innerHTML = `<span>${name}</span><button class="delete-list" title="Supprimer">&times;</button>`;
+        listItem.innerHTML = `<span>${name} (${contactCount} contact${contactCount > 1 ? 's' : ''})</span><button class="delete-list" title="Supprimer">&times;</button>`;
         if (name === currentSelected) {
             listItem.classList.add('selected');
         }
@@ -1503,13 +2655,29 @@ function normalizePhoneNumber(raw) {
  */
 function showContactListLabels(block, normalizedNumber, contactLists) {
     const lists = Object.entries(contactLists)
-        .filter(([name, content]) => {
-            const numbers = content.split('\n').map(x => x.trim());
-            return numbers.includes(normalizedNumber);
+        .filter(([name, listData]) => {
+            // Support du nouveau format (objet) et de l'ancien format (string)
+            let phones = [];
+            
+            if (typeof listData === 'object' && listData.format === 'table' && listData.contacts) {
+                // Nouveau format
+                phones = listData.contacts.map(contact => contact.phone);
+            } else if (typeof listData === 'string') {
+                // Ancien format
+                phones = listData.split('\n').map(x => x.trim()).filter(x => x);
+            } else {
+                console.warn(`[showContactListLabels] Format de liste non reconnu pour "${name}":`, typeof listData, listData);
+                return false;
+            }
+            
+            return phones.includes(normalizedNumber);
         })
         .map(([name]) => name);
 
-    block.querySelectorAll('.cxws-contact-list-label').forEach(e => e.remove());
+    // Nettoyer les labels existants
+    if (block && block.querySelectorAll) {
+        block.querySelectorAll('.cxws-contact-list-label').forEach(e => e.remove());
+    }
 
     if (lists.length > 0) {
         const labelContainer = document.createElement('span');
@@ -1517,17 +2685,28 @@ function showContactListLabels(block, normalizedNumber, contactLists) {
         labelContainer.style.marginLeft = '8px';
         lists.forEach(listName => {
             const lbl = document.createElement('span');
-            lbl.innerText = `📋 ${listName}`;
-            lbl.style.background = '#e1f7e6';
-            lbl.style.color = '#25d366';
-            lbl.style.borderRadius = '4px';
-            lbl.style.padding = '2px 6px';
-            lbl.style.marginRight = '4px';
+            lbl.innerHTML = `📋 ${listName}`;
+            lbl.style.background = 'linear-gradient(135deg, var(--cx-primary, #facc37) 0%, var(--cx-primary-light, #fdd55a) 100%)';
+            lbl.style.color = 'var(--cx-background-light, #1b1d4f)';
+            lbl.style.borderRadius = '6px';
+            lbl.style.padding = '3px 8px';
+            lbl.style.marginRight = '6px';
             lbl.style.fontSize = '11px';
+            lbl.style.fontWeight = '600';
+            lbl.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+            lbl.style.boxShadow = '0 2px 4px rgba(250, 204, 55, 0.3)';
+            lbl.style.border = '1px solid rgba(250, 204, 55, 0.5)';
+            lbl.style.display = 'inline-block';
+            lbl.style.transition = 'all 0.2s ease';
             labelContainer.appendChild(lbl);
         });
-        let numberSpan = block.querySelector('span[dir="auto"]');
-        if (numberSpan) numberSpan.parentNode.appendChild(labelContainer);
+        
+        // Insérer le label dans le DOM de manière sécurisée
+        if (block && block.appendChild) {
+            block.appendChild(labelContainer);
+        } else {
+            console.warn('[showContactListLabels] Bloc invalide pour insertion de label:', block);
+        }
     }
 }
 
@@ -1535,38 +2714,130 @@ function showContactListLabels(block, normalizedNumber, contactLists) {
  * Injecte le bouton "Ajouter à une liste" à côté du numéro dans la fiche contact.
  * Affiche un sélecteur de liste lors du clic.
  * Affiche aussi les labels des listes.
- * Optimisé pour éviter les ralentissements.
+ * Optimisé pour éviter les ralentissements avec sélecteurs robustes.
  */
 function injectAddToListButtonOnContactInfo(contactLists) {
-    const infoBlocks = document.querySelectorAll('.x1c4vz4f.x3nfvp2.xuce83p.x1bft6iq.x1i7k8ik.xq9mrsl.x6s0dn4');
+    // Essayer plusieurs sélecteurs pour les blocs d'information de contact
+    const selectors = [
+        '.x1c4vz4f.x3nfvp2.xuce83p.x1bft6iq.x1i7k8ik.xq9mrsl.x6s0dn4', // Ancien sélecteur
+        '[data-testid="contact-info-drawer"]', // Tiroir d'informations contact
+        '.x1c4vz4f.x2lwn1j', // Sélecteur alternatif
+        '.copyable-text', // Zone de texte copiable (numéro)
+        'div[role="button"] span[dir="auto"]', // Span avec direction automatique dans un bouton
+        'span[title*="+"]', // Span avec titre contenant un +
+        'span[dir="auto"]' // Fallback général pour les spans avec direction auto
+    ];
+
+    let infoBlocks = [];
+    
+    // Essayer chaque sélecteur jusqu'à trouver des éléments
+    for (const selector of selectors) {
+        try {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+                console.log(`[Contact Observer] Trouvé ${elements.length} éléments avec le sélecteur: ${selector}`);
+                infoBlocks = Array.from(elements);
+                break;
+            }
+        } catch (e) {
+            console.warn(`[Contact Observer] Erreur avec le sélecteur ${selector}:`, e);
+        }
+    }
+
+    // Si aucun bloc trouvé avec les sélecteurs spécifiques, chercher les numéros de téléphone
+    if (infoBlocks.length === 0) {
+        const allSpans = document.querySelectorAll('span[dir="auto"]');
+        infoBlocks = Array.from(allSpans).filter(span => {
+            const text = span.textContent?.trim() || '';
+            return /^\+?\d[\d\s\-\(\)]{8,}$/.test(text); // Pattern pour numéros de téléphone
+        });
+        console.log(`[Contact Observer] Fallback: trouvé ${infoBlocks.length} numéros potentiels`);
+    }
+
     infoBlocks.forEach(block => {
-        let numberSpan = block.querySelector('span[dir="auto"]');
+        // Chercher le span contenant le numéro dans ce bloc ou ses parents/enfants
+        let numberSpan = null;
+        
+        if (block.matches('span[dir="auto"]')) {
+            // Le bloc est lui-même un span
+            numberSpan = block;
+        } else {
+            // Chercher dans les enfants
+            numberSpan = block.querySelector('span[dir="auto"]');
+        }
+        
+        if (!numberSpan) {
+            // Chercher dans les parents proches
+            let parent = block.parentElement;
+            for (let i = 0; i < 3 && parent; i++) {
+                numberSpan = parent.querySelector('span[dir="auto"]');
+                if (numberSpan) break;
+                parent = parent.parentElement;
+            }
+        }
+
         if (!numberSpan) return;
-        const numberText = numberSpan.textContent.trim();
-        if (!/^\+?\d[\d\s\-]+$/.test(numberText)) return;
+
+        const numberText = numberSpan.textContent?.trim() || '';
+        
+        // Vérifier que c'est bien un numéro de téléphone
+        if (!/^\+?\d[\d\s\-\(\)]{8,}$/.test(numberText)) return;
+        
         const normalized = normalizePhoneNumber(numberText);
+        console.log(`[Contact Observer] Numéro détecté: ${numberText} -> ${normalized}`);
 
-        showContactListLabels(block, normalized, contactLists);
+        // Afficher les labels des listes
+        showContactListLabels(numberSpan.parentNode || numberSpan.parentElement, normalized, contactLists);
 
-        if (block.querySelector('.cxws-addtolist-btn')) return;
+        // Vérifier si le bouton existe déjà
+        const parentContainer = numberSpan.parentNode || numberSpan.parentElement;
+        if (parentContainer?.querySelector('.cxws-addtolist-btn')) return;
 
         const btn = document.createElement('button');
         btn.innerText = '➕ Ajouter à une liste';
         btn.className = 'cxws-addtolist-btn';
         btn.style.marginLeft = '8px';
-        btn.style.background = '#25d366';
-        btn.style.color = '#fff';
+        btn.style.background = 'var(--cx-primary, #facc37)';
+        btn.style.color = 'var(--cx-background-light, #1b1d4f)';
         btn.style.border = 'none';
-        btn.style.borderRadius = '4px';
-        btn.style.padding = '2px 8px';
+        btn.style.borderRadius = '8px';
+        btn.style.padding = '4px 10px';
         btn.style.fontSize = '12px';
+        btn.style.fontWeight = '600';
         btn.style.cursor = 'pointer';
         btn.style.zIndex = '10010';
         btn.style.pointerEvents = 'auto';
-        numberSpan.parentNode.appendChild(btn);
+        btn.style.position = 'relative';
+        btn.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+        btn.style.boxShadow = '0 2px 8px rgba(250, 204, 55, 0.3)';
+        btn.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        
+        // Effets hover
+        btn.addEventListener('mouseenter', () => {
+            btn.style.background = 'var(--cx-primary-light, #fdd55a)';
+            btn.style.transform = 'translateY(-1px)';
+            btn.style.boxShadow = '0 4px 12px rgba(250, 204, 55, 0.4)';
+        });
+        
+        btn.addEventListener('mouseleave', () => {
+            btn.style.background = 'var(--cx-primary, #facc37)';
+            btn.style.transform = 'translateY(0)';
+            btn.style.boxShadow = '0 2px 8px rgba(250, 204, 55, 0.3)';
+        });
+        
+        // Insérer le bouton après le numéro
+        if (numberSpan.nextSibling) {
+            numberSpan.parentNode.insertBefore(btn, numberSpan.nextSibling);
+        } else {
+            numberSpan.parentNode.appendChild(btn);
+        }
+
+        console.log(`[Contact Observer] Bouton ajouté pour ${normalized}`);
 
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            e.preventDefault();
+            
             const listNames = Object.keys(contactLists);
             if (listNames.length === 0) {
                 alert('Aucune liste existante. Créez une liste d\'abord.');
@@ -1580,19 +2851,25 @@ function injectAddToListButtonOnContactInfo(contactLists) {
             popup.style.position = 'fixed';
             popup.style.top = (e.clientY + 10) + 'px';
             popup.style.left = (e.clientX - 80) + 'px';
-            popup.style.background = '#fff';
-            popup.style.border = '1px solid #25d366';
-            popup.style.borderRadius = '6px';
-            popup.style.padding = '10px';
-            popup.style.zIndex = 9999;
-            popup.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+            popup.style.background = 'var(--cx-background-white, #ffffff)';
+            popup.style.border = '2px solid var(--cx-primary, #facc37)';
+            popup.style.borderRadius = '12px';
+            popup.style.padding = '16px';
+            popup.style.zIndex = '99999';
+            popup.style.boxShadow = '0 8px 32px rgba(27, 29, 79, 0.4), 0 0 0 1px rgba(250, 204, 55, 0.2)';
+            popup.style.minWidth = '220px';
+            popup.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+            popup.style.backdropFilter = 'blur(10px)';
+            popup.style.animation = 'fadeInScale 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
             popup.innerHTML = `
-                <div style="margin-bottom:6px;font-weight:bold;">Ajouter à une liste :</div>
-                <select id="cxws-list-select" style="width:100%;margin-bottom:8px;">
+                <div style="margin-bottom:10px;font-weight:700;color:var(--cx-background-light, #1b1d4f);font-size:14px;">Ajouter à une liste :</div>
+                <select id="cxws-list-select" style="width:100%;margin-bottom:12px;padding:8px 12px;border:2px solid var(--cx-border-color, rgba(250, 204, 55, 0.4));border-radius:8px;background:var(--cx-background-white, #ffffff);color:var(--cx-background-light, #1b1d4f);font-size:13px;font-family:inherit;outline:none;transition:all 0.2s ease;">
                     ${listNames.map(name => `<option value="${name}">${name}</option>`).join('')}
                 </select>
-                <button id="cxws-confirm-add-btn" style="background:#25d366;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;">Ajouter</button>
-                <button id="cxws-cancel-add-btn" style="margin-left:8px;background:#eee;color:#333;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;">Annuler</button>
+                <div style="display:flex;gap:8px;">
+                    <button id="cxws-confirm-add-btn" style="flex:1;background:var(--cx-primary, #facc37);color:var(--cx-background-light, #1b1d4f);border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-weight:600;font-size:13px;transition:all 0.2s ease;font-family:inherit;">Ajouter</button>
+                    <button id="cxws-cancel-add-btn" style="flex:1;background:var(--cx-text-muted, rgba(255, 255, 255, 0.7));color:var(--cx-background-light, #1b1d4f);border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-weight:600;font-size:13px;transition:all 0.2s ease;font-family:inherit;">Annuler</button>
+                </div>
             `;
             document.body.appendChild(popup);
 
@@ -1600,36 +2877,178 @@ function injectAddToListButtonOnContactInfo(contactLists) {
 
             popup.querySelector('#cxws-confirm-add-btn').onclick = async () => {
                 const selectedList = popup.querySelector('#cxws-list-select').value;
-                let content = contactLists[selectedList] || '';
-                let numbers = content.split('\n').map(x => x.trim()).filter(x => x);
-                if (!numbers.includes(normalized)) {
-                    numbers.push(normalized);
-                    contactLists[selectedList] = numbers.join('\n');
-                    await chrome.storage.local.set({ contactLists });
+                
+                console.log(`[Contact Observer] Tentative d'ajout de ${normalized} à la liste ${selectedList}`);
+                
+                // Récupérer les listes depuis le storage
+                const { contactLists: storedLists = {} } = await chrome.storage.local.get('contactLists');
+                
+                let listData = storedLists[selectedList];
+                
+                // Initialiser la liste si elle n'existe pas
+                if (!listData) {
+                    listData = {
+                        format: 'table',
+                        contacts: [],
+                        textFormat: ''
+                    };
                 }
+                
+                // Convertir l'ancien format si nécessaire
+                if (typeof listData === 'string') {
+                    const phones = listData.split('\n').map(p => p.trim()).filter(p => p);
+                    listData = {
+                        format: 'table',
+                        contacts: phones.map(phone => ({ phone, name: '', email: '' })),
+                        textFormat: listData
+                    };
+                }
+                
+                // Vérifier si le contact existe déjà
+                const existingContact = listData.contacts?.find(contact => contact.phone === normalized);
+                
+                if (!existingContact) {
+                    // Ajouter le nouveau contact
+                    if (!listData.contacts) listData.contacts = [];
+                    listData.contacts.push({ 
+                        phone: normalized, 
+                        name: '', 
+                        email: '' 
+                    });
+                    
+                    // Mettre à jour le format texte pour la compatibilité
+                    listData.textFormat = listData.contacts.map(c => c.phone).join('\n');
+                    
+                    // Sauvegarder
+                    storedLists[selectedList] = listData;
+                    await chrome.storage.local.set({ contactLists: storedLists });
+                    
+                    console.log(`[Contact Observer] Contact ${normalized} ajouté à la liste ${selectedList}`, listData);
+                    alert(`Numéro ${normalized} ajouté à la liste "${selectedList}"`);
+                } else {
+                    console.log(`[Contact Observer] Contact ${normalized} déjà présent dans la liste ${selectedList}`);
+                    alert(`Le numéro ${normalized} est déjà dans la liste "${selectedList}"`);
+                }
+                
                 popup.remove();
-                alert(`Numéro ${normalized} ajouté à la liste "${selectedList}"`);
-                showContactListLabels(block, normalized, contactLists);
+                showContactListLabels(parentContainer, normalized, storedLists);
             };
         });
     });
 }
 
-// Debounce pour limiter la fréquence d'injection
+// Debounce pour limiter la fréquence d'injection avec logs améliorés
 let cxwsInjectTimeout = null;
+let lastInjectTime = 0;
+const INJECT_COOLDOWN = 1000; // 1 seconde entre les injections
+
 function debouncedInjectContactInfo() {
     if (cxwsInjectTimeout) clearTimeout(cxwsInjectTimeout);
+    
     cxwsInjectTimeout = setTimeout(async () => {
-        const { contactLists = {} } = await chrome.storage.local.get('contactLists');
-        injectAddToListButtonOnContactInfo(contactLists);
-    }, 300); // 300ms après la dernière mutation
+        // Éviter les injections trop fréquentes
+        const now = Date.now();
+        if (now - lastInjectTime < INJECT_COOLDOWN) {
+            console.log('[Contact Observer] Injection ignorée (cooldown actif)');
+            return;
+        }
+        
+        try {
+            console.log('[Contact Observer] Début d\'injection des boutons de contact');
+            const { contactLists = {} } = await chrome.storage.local.get('contactLists');
+            console.log('[Contact Observer] Listes de contacts chargées:', Object.keys(contactLists));
+            
+            // Vérifier que les listes ont un format correct
+            const validLists = {};
+            for (const [name, content] of Object.entries(contactLists)) {
+                if (typeof content === 'string') {
+                    validLists[name] = content;
+                } else if (content && typeof content === 'object') {
+                    // Gestion des objets avec propriétés contacts, format, etc.
+                    if (content.contacts && Array.isArray(content.contacts)) {
+                        validLists[name] = content.contacts.map(contact => 
+                            contact.phone || contact.number || contact
+                        ).join('\n');
+                    } else if (content.textFormat) {
+                        validLists[name] = content.textFormat;
+                    } else {
+                        console.warn(`[Contact Observer] Liste "${name}" a un format invalide:`, typeof content, content);
+                        validLists[name] = JSON.stringify(content);
+                    }
+                } else {
+                    console.warn(`[Contact Observer] Liste "${name}" a un format invalide:`, typeof content, content);
+                    // Tenter de convertir en string si possible
+                    if (Array.isArray(content)) {
+                        validLists[name] = content.join('\n');
+                    } else if (content != null) {
+                        validLists[name] = String(content);
+                    }
+                }
+            }
+            
+            injectAddToListButtonOnContactInfo(validLists);
+            lastInjectTime = now;
+            console.log('[Contact Observer] Injection terminée');
+        } catch (error) {
+            console.error('[Contact Observer] Erreur lors de l\'injection:', error);
+        }
+    }, 500); // Augmenté à 500ms pour réduire la fréquence
 }
 
-// Observe les changements du DOM pour injecter le bouton à chaque affichage de fiche contact
-const cxwsContactInfoObserver = new MutationObserver(() => {
-    debouncedInjectContactInfo();
+// Observer optimisé pour les changements du DOM
+const cxwsContactInfoObserver = new MutationObserver((mutations) => {
+    // Filtrer les mutations pertinentes seulement
+    const hasRelevantChanges = mutations.some(mutation => {
+        if (mutation.type !== 'childList') return false;
+        
+        // Ignorer les changements dans nos propres éléments
+        if (mutation.target.classList?.contains('cxws-addtolist-btn') || 
+            mutation.target.classList?.contains('cxws-contact-list-label')) {
+            return false;
+        }
+        
+        // Vérifier s'il y a des ajouts/suppressions significatifs
+        const hasAddedNodes = mutation.addedNodes.length > 0;
+        const hasRemovedNodes = mutation.removedNodes.length > 0;
+        
+        // Ignorer les petits changements de texte
+        if (hasAddedNodes) {
+            const hasSignificantNodes = Array.from(mutation.addedNodes).some(node => 
+                node.nodeType === Node.ELEMENT_NODE && 
+                !node.classList?.contains('cxws-addtolist-btn') &&
+                !node.classList?.contains('cxws-contact-list-label')
+            );
+            return hasSignificantNodes;
+        }
+        
+        return hasRemovedNodes;
+    });
+
+    if (hasRelevantChanges) {
+        console.log('[Contact Observer] Mutation pertinente détectée, planification de l\'injection');
+        debouncedInjectContactInfo();
+    }
 });
 cxwsContactInfoObserver.observe(document.body, { childList: true, subtree: true });
+
+// Injection immédiate au chargement
+console.log('[Contact Observer] Initialisation et injection immédiate');
+setTimeout(() => {
+    debouncedInjectContactInfo();
+}, 2000); // Attendre 2 secondes pour que la page soit chargée
+
+// Réessayer seulement 3 fois toutes les 10 secondes
+let retryCount = 0;
+const retryInterval = setInterval(() => {
+    retryCount++;
+    console.log(`[Contact Observer] Tentative d'injection ${retryCount}/3`);
+    debouncedInjectContactInfo();
+    
+    if (retryCount >= 3) { // Seulement 3 tentatives
+        clearInterval(retryInterval);
+        console.log('[Contact Observer] Fin des tentatives automatiques');
+    }
+}, 10000); // Toutes les 10 secondes au lieu de 5
 
 /**
  * Injecte un bouton "Insérer un modèle" comme dernier bouton à droite dans la zone de saisie de message.
@@ -1649,18 +3068,33 @@ function injectInsertTemplateButton() {
     const btn = document.createElement('button');
     btn.className = 'cxws-insert-template-btn';
     btn.title = 'Insérer un modèle de message';
-    btn.style.background = 'none';
-    btn.style.border = 'none';
+    btn.style.background = 'linear-gradient(135deg, var(--cx-primary, #facc37) 0%, var(--cx-primary-light, #fdd55a) 100%)';
+    btn.style.border = '2px solid var(--cx-border-bright, rgba(250, 204, 55, 0.8))';
+    btn.style.borderRadius = '20px';
     btn.style.cursor = 'pointer';
     btn.style.marginLeft = '8px';
     btn.style.marginRight = '4px';
-    btn.style.fontSize = '18px';
-    btn.style.padding = '4px 8px';
+    btn.style.fontSize = '16px';
+    btn.style.padding = '6px 12px';
     btn.style.display = 'flex';
     btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
     btn.style.zIndex = '10010';
     btn.style.pointerEvents = 'auto';
-    btn.innerHTML = `<span aria-hidden="true" style="color:#25d366;">📝</span>`;
+    btn.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+    btn.style.boxShadow = '0 2px 8px rgba(250, 204, 55, 0.3)';
+    btn.innerHTML = `<span aria-hidden="true" style="color:var(--cx-background-light, #1b1d4f);">✏️</span>`;
+    
+    // Effets hover
+    btn.addEventListener('mouseenter', () => {
+        btn.style.transform = 'translateY(-1px) scale(1.05)';
+        btn.style.boxShadow = '0 4px 12px rgba(250, 204, 55, 0.4)';
+    });
+    
+    btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'translateY(0) scale(1)';
+        btn.style.boxShadow = '0 2px 8px rgba(250, 204, 55, 0.3)';
+    });
 
     // Ajoute le bouton comme dernier enfant du toolbar (à droite)
     emojiBtn.parentNode.parentNode.appendChild(btn);
@@ -1886,6 +3320,7 @@ function injectCopilotInterface() {
     // Créer le bouton de suggestions flottant
     const suggestionsBtn = document.createElement('button');
     suggestionsBtn.id = 'cx-copilot-suggestions-btn';
+    suggestionsBtn.className = 'hidden'; // Caché par défaut comme la boîte
     suggestionsBtn.innerHTML = `
         <span>💡</span>
         <span>Suggestions IA</span>
@@ -1914,8 +3349,16 @@ function attachCopilotEvents() {
 
     // Afficher/masquer la boîte copilote
     suggestionsBtn?.addEventListener('click', () => {
-        // Au lieu d'ouvrir la boîte d'input, afficher directement les suggestions
-        showCopilotSuggestions();
+        // Basculer l'interface Copilot
+        const copilotBox = document.getElementById('cx-copilot-box');
+        if (copilotBox.classList.contains('hidden')) {
+            // Si caché, afficher la boîte ET les suggestions
+            copilotBox.classList.remove('hidden');
+            setTimeout(() => showCopilotSuggestions(), 300); // Petit délai pour l'animation
+        } else {
+            // Si affiché, masquer
+            copilotBox.classList.add('hidden');
+        }
     });
 
     // Fermer la boîte copilote
@@ -2266,7 +3709,7 @@ function showCopilotResponse(response) {
             // Obtenir le texte pur sans balises HTML
             const textContent = contentDiv.textContent || contentDiv.innerText || response;
             await navigator.clipboard.writeText(textContent);
-            copyBtn.innerHTML = '✓ Copié';
+            copyBtn.innerHTML = '✅ Copié';
             copyBtn.style.background = '#28a745';
             setTimeout(() => {
                 copyBtn.innerHTML = '📋 Copier';
@@ -2384,13 +3827,82 @@ function insertTextIntoWhatsAppInput(text) {
 function toggleCopilotInterface() {
     const copilotBox = document.getElementById('cx-copilot-box');
     const suggestionsBtn = document.getElementById('cx-copilot-suggestions-btn');
+    const toggleBtn = document.getElementById('cx-copilot-toggle-btn');
+    
+    console.log('[DEBUG] Toggle Copilot - Éléments trouvés:', {
+        copilotBox: !!copilotBox,
+        suggestionsBtn: !!suggestionsBtn,
+        toggleBtn: !!toggleBtn
+    });
     
     if (copilotBox && suggestionsBtn) {
         const isHidden = copilotBox.classList.contains('hidden');
-        copilotBox.classList.toggle('hidden', !isHidden);
-        suggestionsBtn.classList.toggle('hidden', !isHidden);
+        console.log('[DEBUG] État actuel - isHidden:', isHidden);
+        
+        // Basculer l'état : si caché -> afficher, si affiché -> cacher
+        if (isHidden) {
+            copilotBox.classList.remove('hidden');
+            suggestionsBtn.classList.remove('hidden');
+            if (toggleBtn) toggleBtn.textContent = '👁️ Masquer Copilot';
+            console.log('[DEBUG] Affichage du Copilot');
+            console.log('[DEBUG] Classes après affichage:', {
+                copilotBoxClasses: copilotBox.className,
+                copilotBoxVisible: getComputedStyle(copilotBox).display !== 'none',
+                suggestionsVisible: getComputedStyle(suggestionsBtn).display !== 'none'
+            });
+        } else {
+            copilotBox.classList.add('hidden');
+            suggestionsBtn.classList.add('hidden');
+            if (toggleBtn) toggleBtn.textContent = '👁️ Afficher Copilot';
+            console.log('[DEBUG] Masquage du Copilot');
+            console.log('[DEBUG] Classes après masquage:', {
+                copilotBoxClasses: copilotBox.className,
+                copilotBoxVisible: getComputedStyle(copilotBox).display !== 'none',
+                suggestionsVisible: getComputedStyle(suggestionsBtn).display !== 'none'
+            });
+        }
+    } else {
+        console.warn('[DEBUG] Éléments Copilot non trouvés:', {
+            copilotBox: document.getElementById('cx-copilot-box'),
+            suggestionsBtn: document.getElementById('cx-copilot-suggestions-btn')
+        });
     }
 }
+
+// Fonction de test pour diagnostiquer le problème du Copilot
+window.testCopilotToggle = function() {
+    console.log('=== TEST COPILOT TOGGLE ===');
+    const copilotBox = document.getElementById('cx-copilot-box');
+    const suggestionsBtn = document.getElementById('cx-copilot-suggestions-btn');
+    const toggleBtn = document.getElementById('cx-copilot-toggle-btn');
+    
+    console.log('Éléments trouvés:', {
+        copilotBox: !!copilotBox,
+        suggestionsBtn: !!suggestionsBtn,
+        toggleBtn: !!toggleBtn
+    });
+    
+    if (copilotBox) {
+        console.log('État copilotBox:', {
+            classes: copilotBox.className,
+            hasHiddenClass: copilotBox.classList.contains('hidden'),
+            computedDisplay: getComputedStyle(copilotBox).display,
+            computedVisibility: getComputedStyle(copilotBox).visibility
+        });
+    }
+    
+    if (suggestionsBtn) {
+        console.log('État suggestionsBtn:', {
+            classes: suggestionsBtn.className,
+            hasHiddenClass: suggestionsBtn.classList.contains('hidden'),
+            computedDisplay: getComputedStyle(suggestionsBtn).display,
+            computedVisibility: getComputedStyle(suggestionsBtn).visibility
+        });
+    }
+    
+    console.log('Appel de toggleCopilotInterface()...');
+    toggleCopilotInterface();
+};
 
 // Observer pour injecter l'interface copilote quand une conversation est ouverte
 let copilotObserver = null;
@@ -2517,7 +4029,7 @@ function injectCopilotToggleBtn() {
     if (!inputArea) return;
     const btn = document.createElement('button');
     btn.id = 'cx-copilot-toggle-btn';
-    btn.textContent = '👁️ Afficher/Masquer Copilot';
+    btn.textContent = '👁️ Afficher Copilot'; // Texte initial indique l'action à faire
     btn.style.background = '#e9edef';
     btn.style.color = '#008a69';
     btn.style.border = 'none';
@@ -2531,10 +4043,7 @@ function injectCopilotToggleBtn() {
     btn.style.pointerEvents = 'auto';
     inputArea.parentNode.insertBefore(btn, inputArea);
     btn.onclick = () => {
-        const copilotBox = document.getElementById('cx-copilot-box');
-        const suggestionsBtn = document.getElementById('cx-copilot-suggestions-btn');
-        if (copilotBox) copilotBox.style.display = (copilotBox.style.display === 'none') ? 'flex' : 'none';
-        if (suggestionsBtn) suggestionsBtn.style.display = (suggestionsBtn.style.display === 'none') ? 'inline-block' : 'none';
+        toggleCopilotInterface();
     };
 }
 
