@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const phoneInput = document.getElementById('phone-input');
     const errorMessage = document.getElementById('error-message');
     const welcomeSection = document.getElementById('welcome-section');
+    const openWhatsappBtn = document.getElementById('open-whatsapp');
     
     console.log('[CX Popup] Extension popup loaded');
 
@@ -130,6 +131,14 @@ document.addEventListener('DOMContentLoaded', function () {
             if (e.key === 'Enter') {
                 handleVerification();
             }
+        });
+    }
+
+    // Événement pour le bouton "Ouvrir WhatsApp Web"
+    if (openWhatsappBtn) {
+        openWhatsappBtn.addEventListener('click', function () {
+            chrome.tabs.create({ url: 'https://web.whatsapp.com/' });
+            window.close();
         });
     }
 

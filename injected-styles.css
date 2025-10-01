@@ -780,6 +780,47 @@
   margin-bottom: 20px;
 }
 
+.cx-api-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 15px 0;
+}
+
+.cx-api-link-btn {
+  background: linear-gradient(135deg, var(--cx-primary) 0%, var(--cx-primary-light) 100%);
+  color: var(--cx-background-light);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--cx-font-family);
+  cursor: pointer;
+  transition: all var(--cx-transition-fast);
+  box-shadow: 0 3px 12px rgba(250, 204, 55, 0.3);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 140px;
+  text-align: center;
+}
+
+.cx-api-link-btn:hover {
+  background: linear-gradient(135deg, var(--cx-primary-light) 0%, var(--cx-primary) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(250, 204, 55, 0.4);
+  border-color: var(--cx-border-bright);
+}
+
+.cx-api-link-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(250, 204, 55, 0.3);
+}
+
 .cx-modal-section:last-child {
   margin-bottom: 0;
 }
@@ -1101,6 +1142,51 @@
   letter-spacing: 0.5px;
 }
 
+.cx-templates-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.cx-templates-header h3 {
+  margin: 0;
+  color: var(--cx-primary);
+  font-size: 18px;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cx-export-btn {
+  background: linear-gradient(135deg, var(--cx-success-color) 0%, #4caf50 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--cx-font-family);
+  cursor: pointer;
+  transition: all var(--cx-transition-fast);
+  box-shadow: 0 2px 8px rgba(102, 187, 106, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cx-export-btn:hover {
+  background: linear-gradient(135deg, #4caf50 0%, var(--cx-success-color) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 187, 106, 0.4);
+}
+
+.cx-export-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(102, 187, 106, 0.3);
+}
+
 #cx-templates-list,
 #cx-contact-lists-list {
   list-style: none;
@@ -1312,8 +1398,7 @@
 }
 
 /* Labels du modal d'options - couleur jaune thématique */
-label[for="cx-delay-min"],
-label[for="cx-dev-mode-switch"] {
+label[for="cx-delay-min"] {
   color: var(--cx-primary) !important;
   font-weight: 600;
   font-size: 14px;

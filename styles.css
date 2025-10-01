@@ -89,8 +89,11 @@
     display: flex;
     gap: 10px;
     justify-content: center;
+    align-items: center;
     flex-wrap: wrap;
     margin: 20px 0;
+    width: 100%;
+    text-align: center;
 }
 
 .primary-button {
@@ -111,6 +114,31 @@
 }
 
 .primary-button:hover {
+    background: linear-gradient(135deg, #fdd55a 0%, #facc37 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(250, 204, 55, 0.4);
+}
+
+.whatsapp-button {
+    background: linear-gradient(135deg, #70f715 0%, #f4c430 100%);
+    color: #1b1d4f;
+    text-decoration: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 80px;
+    max-width: 220px;
+    align-items: center;
+}
+
+.whatsapp-button:hover {
     background: linear-gradient(135deg, #fdd55a 0%, #facc37 100%);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(250, 204, 55, 0.4);

@@ -3079,12 +3079,6 @@ const retryInterval = setInterval(() => {
     }
 }, 10000); // Toutes les 10 secondes au lieu de 5
 
-// Fonction pour injecter la modale de configuration du copilote
-function injectCopilotSettingsModal() {
-    if (document.getElementById('cx-copilot-settings-modal')) return;
-
-    // Ajout de logs pour le débogage
-    console.log('Injecting Copilot Settings Modal...');
 
     const modal = document.createElement('div');
     modal.id = 'cx-copilot-settings-modal';

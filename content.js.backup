@@ -1,4 +1,4 @@
-﻿// =================================================================================================
+// =================================================================================================
 // FONCTIONS UTILITAIRES ROBUSTES
 // =================================================================================================
 
@@ -3078,6 +3078,199 @@ const retryInterval = setInterval(() => {
         console.log('[Contact Observer] Fin des tentatives automatiques');
     }
 }, 10000); // Toutes les 10 secondes au lieu de 5
+
+/**
+ * Injecte un bouton "Insérer un modèle" comme dernier bouton à droite dans la zone de saisie de message.
+ * Affine le visuel et affiche la liste au-dessus du bouton, centrée dans la fenêtre.
+ * Lors de l'insertion, remplit le champ message et prépare les pièces jointes (sans envoyer).
+ */
+function injectInsertTemplateButton() {
+    const inputToolbar = document.querySelector('div._ak1r');
+    if (!inputToolbar) return;
+    if (inputToolbar.querySelector('.cxws-insert-template-btn')) return;
+
+    // Trouve le bouton emoji pour positionner le bouton à droite
+    const emojiBtn = inputToolbar.querySelector('button[aria-label="Sélecteur d’expressions"]');
+    if (!emojiBtn) return;
+
+    // Crée le bouton
+    const btn = document.createElement('button');
+    btn.className = 'cxws-insert-template-btn';
+    btn.title = 'Insérer un modèle de message';
+    btn.style.background = 'linear-gradient(135deg, #facc37 0%, #f4c430 100%)';
+    btn.style.border = '2px solid #facc37';
+    btn.style.borderRadius = '50%';
+    btn.style.cursor = 'pointer';
+    btn.style.position = 'absolute';
+    btn.style.right = '70px';
+    btn.style.top = '50%';
+    btn.style.transform = 'translateY(-50%)';
+    btn.style.width = '44px';
+    btn.style.height = '44px';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.zIndex = '10010';
+    btn.style.pointerEvents = 'auto';
+    btn.style.transition = 'all 0.3s ease';
+    btn.style.boxShadow = '0 2px 8px rgba(250, 204, 55, 0.4)';
+    btn.style.fontSize = '0';
+    btn.innerHTML = `<span style="font-size: 20px; line-height: 1; color: #1b1d4f;">📋</span>`;
+    
+    // Effets hover
+    btn.addEventListener('mouseenter', () => {
+        btn.style.transform = 'translateY(-1px) scale(1.05)';
+        btn.style.boxShadow = '0 4px 12px rgba(250, 204, 55, 0.4)';
+    });
+    
+    btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'translateY(0) scale(1)';
+        btn.style.boxShadow = '0 2px 8px rgba(250, 204, 55, 0.3)';
+    });
+
+    // Ajoute le bouton directement dans le toolbar
+    inputToolbar.style.position = 'relative';
+    inputToolbar.appendChild(btn);
+
+    btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+        const templateNames = Object.keys(messageTemplates);
+        if (templateNames.length === 0) {
+            alert('Aucun modèle disponible.');
+            return;
+        }
+
+        // Supprime le popup existant
+        let popup = document.getElementById('cxws-insert-template-popup');
+        if (popup) popup.remove();
+
+        // Affiche le popup centré dans la fenêtre (pour éviter qu'il soit hors vue)
+        popup = document.createElement('div');
+        popup.id = 'cxws-insert-template-popup';
+        popup.style.position = 'fixed';
+        popup.style.left = '50%';
+        popup.style.top = '35%';
+        popup.style.transform = 'translate(-50%, -50%)';
+        popup.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 204, 55, 0.05) 100%)';
+        popup.style.border = '2px solid var(--cx-primary, #facc37)';
+        popup.style.borderRadius = '16px';
+        popup.style.padding = '24px 28px';
+        popup.style.zIndex = '99999';
+        popup.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(250, 204, 55, 0.3)';
+        popup.style.minWidth = '280px';
+        popup.style.maxWidth = '400px';
+        popup.style.textAlign = 'center';
+        popup.style.fontFamily = 'var(--cx-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)';
+        popup.style.backdropFilter = 'blur(10px)';
+        popup.style.animation = 'fadeInScale 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+
+        popup.innerHTML = `
+            <div style="margin-bottom:16px;font-weight:700;color:var(--cx-primary, #facc37);font-size:16px;text-align:center;">📋 Modèles de message</div>
+            <select id="cxws-template-select" style="width:100%;margin-bottom:16px;padding:10px 12px;border-radius:8px;border:2px solid var(--cx-border-color, rgba(250, 204, 55, 0.4));font-size:14px;font-family:var(--cx-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);background:white;color:#1b1d4f;">
+                ${templateNames.map(name => `<option value="${name}">${name}</option>`).join('')}
+            </select>
+            <div style="display:flex;gap:8px;justify-content:center;">
+                <button id="cxws-insert-template-confirm-btn" style="background:linear-gradient(135deg, var(--cx-primary, #facc37) 0%, #f4c430 100%);color:#1b1d4f;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:14px;font-weight:600;font-family:var(--cx-font-family, sans-serif);transition:all 0.2s ease;box-shadow:0 2px 8px rgba(250, 204, 55, 0.3);">✅ Insérer</button>
+                <button id="cxws-insert-template-cancel-btn" style="background:#f0f0f0;color:#666;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:14px;font-weight:600;font-family:var(--cx-font-family, sans-serif);transition:all 0.2s ease;">❌ Annuler</button>
+            </div>
+        `;
+        document.body.appendChild(popup);
+
+        popup.querySelector('#cxws-insert-template-cancel-btn').onclick = () => popup.remove();
+
+        // Ajout des effets hover pour les boutons
+        const confirmBtn = popup.querySelector('#cxws-insert-template-confirm-btn');
+        const cancelBtn = popup.querySelector('#cxws-insert-template-cancel-btn');
+        
+        confirmBtn.addEventListener('mouseenter', () => {
+            confirmBtn.style.transform = 'translateY(-1px)';
+            confirmBtn.style.boxShadow = '0 4px 12px rgba(250, 204, 55, 0.5)';
+        });
+        confirmBtn.addEventListener('mouseleave', () => {
+            confirmBtn.style.transform = 'translateY(0)';
+            confirmBtn.style.boxShadow = '0 2px 8px rgba(250, 204, 55, 0.3)';
+        });
+        
+        cancelBtn.addEventListener('mouseenter', () => {
+            cancelBtn.style.transform = 'translateY(-1px)';
+            cancelBtn.style.background = '#e0e0e0';
+        });
+        cancelBtn.addEventListener('mouseleave', () => {
+            cancelBtn.style.transform = 'translateY(0)';
+            cancelBtn.style.background = '#f0f0f0';
+        });
+
+        popup.querySelector('#cxws-insert-template-confirm-btn').onclick = async () => {
+            const selectedName = popup.querySelector('#cxws-template-select').value;
+            const template = messageTemplates[selectedName];
+            let message = typeof template === 'object' ? template.message : template;
+            let attachments = typeof template === 'object' && template.attachments ? template.attachments : [];
+
+            // Remplit la barre d'envoi du message (pas la barre de recherche)
+            const inputBox = document.querySelector('div[contenteditable="true"][role="textbox"][aria-label*="message"]');
+            if (inputBox) {
+                inputBox.focus();
+                // Efface le contenu précédent
+                inputBox.innerHTML = '';
+                document.execCommand('insertText', false, message);
+                inputBox.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            // Ajoute les fichiers joints (prévisualisation, sans envoyer)
+            if (attachments.length > 0) {
+                // Trouve le bouton "Joindre"
+                const attachButtonIcon = document.querySelector("span[data-icon='clip'], span[data-icon='plus-rounded']");
+                const attachButton = attachButtonIcon ? attachButtonIcon.closest('button') : null;
+                if (attachButton) {
+                    attachButton.click();
+                    // Attend le bouton "media" ou "document"
+                    let fileType = attachments[0].type;
+                    let attachmentTypeIconSelector;
+                    if (fileType.startsWith('image/') || fileType.startsWith('video/')) {
+                        attachmentTypeIconSelector = "span[data-icon='media-filled-refreshed']";
+                    } else if (fileType.startsWith('audio/')) {
+                        attachmentTypeIconSelector = "span[data-icon='ic-headphones-filled']";
+                    } else {
+                        attachmentTypeIconSelector = "span[data-icon='document-filled-refreshed']";
+                    }
+                    try {
+                        const typeIcon = await waitForElement(attachmentTypeIconSelector, 3000);
+                        const typeButton = typeIcon.closest("li[role='button']");
+                        const fileInput = typeButton ? typeButton.querySelector("input[type='file']") : null;
+                        if (fileInput) {
+                            const dataTransfer = new DataTransfer();
+                            attachments.forEach(att => {
+                                const fileObj = dataURLtoFile(att.dataUrl, att.name);
+                                dataTransfer.items.add(fileObj);
+                            });
+                            fileInput.files = dataTransfer.files;
+                            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    } catch (err) {
+                        // ignore si pas de bouton trouvé
+                    }
+                }
+            }
+            popup.remove();
+        };
+    });
+}
+
+// Debounce pour limiter la fréquence d'injection du bouton
+let cxwsInsertBtnTimeout = null;
+function debouncedInjectInsertTemplateButton() {
+    if (cxwsInsertBtnTimeout) clearTimeout(cxwsInsertBtnTimeout);
+    cxwsInsertBtnTimeout = setTimeout(() => {
+        injectInsertTemplateButton();
+    }, 300);
+}
+
+// Observe les changements du DOM pour injecter le bouton dans la zone de saisie
+const cxwsInsertBtnObserver = new MutationObserver(() => {
+    debouncedInjectInsertTemplateButton();
+});
+cxwsInsertBtnObserver.observe(document.body, { childList: true, subtree: true });
 
 // Fonction pour injecter la modale de configuration du copilote
 function injectCopilotSettingsModal() {
