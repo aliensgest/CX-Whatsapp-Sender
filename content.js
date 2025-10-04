@@ -66,19 +66,86 @@ async function typeIn(element, text) {
 }
 
 /**
+ * Convertit un attachment de référence en objet File réel
+ * @param {object} attachment - L'attachment avec référence de fichier
+ * @returns {Promise<File>} Le fichier converti
+ */
+async function convertLargeFileReferenceToFile(attachment) {
+    if (!attachment.isLargeFile || !attachment.fileId) {
+        throw new Error('Attachment is not a large file reference');
+    }
+    
+    const originalFile = temporaryFileReferences.get(attachment.fileId);
+    if (!originalFile) {
+        throw new Error(`File reference not found for ${attachment.name}. Please re-add the file.`);
+    }
+    
+    console.log(`[convertLargeFileReference] Converting large file: ${attachment.name}`);
+    return originalFile;
+}
+
+/**
  * Convertit une Data URL (base64) en un objet File, nécessaire pour les pièces jointes.
  * @param {string} dataurl - La chaîne Data URL.
  * @param {string} filename - Le nom de fichier souhaité.
  * @returns {File} L'objet File.
  */
 function dataURLtoFile(dataurl, filename) {
-    let arr = dataurl.split(','),
-        mime = arr[0].match(/:(.*?);/)[1],
-        bstr = atob(arr[1]), 
-        n = bstr.length, 
-        u8arr = new Uint8Array(n);
-    while(n--){ u8arr[n] = bstr.charCodeAt(n); }
-    return new File([u8arr], filename, {type:mime});
+    if (!dataurl || typeof dataurl !== 'string') {
+        console.error('[dataURLtoFile] Invalid dataurl:', dataurl);
+        throw new Error('Data URL invalide');
+    }
+    
+    let arr = dataurl.split(',');
+    if (arr.length < 2) {
+        console.error('[dataURLtoFile] Invalid dataurl format:', dataurl);
+        throw new Error('Format Data URL invalide');
+    }
+    
+    // Extraction sécurisée du type MIME
+    let mime = 'application/octet-stream'; // Valeur par défaut
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (mimeMatch && mimeMatch[1]) {
+        mime = mimeMatch[1];
+    } else {
+        // Fallback: essayer de déduire le type MIME du nom de fichier
+        const extension = filename.split('.').pop().toLowerCase();
+        const mimeTypes = {
+            'mp4': 'video/mp4',
+            'avi': 'video/avi',
+            'mov': 'video/quicktime',
+            'wmv': 'video/x-ms-wmv',
+            'flv': 'video/x-flv',
+            'webm': 'video/webm',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'mp3': 'audio/mp3',
+            'wav': 'audio/wav',
+            'ogg': 'audio/ogg',
+            'pdf': 'application/pdf',
+            'doc': 'application/msword',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        };
+        mime = mimeTypes[extension] || 'application/octet-stream';
+        console.log(`[dataURLtoFile] Type MIME déduit du nom de fichier "${filename}": ${mime}`);
+    }
+    
+    try {
+        const bstr = atob(arr[1]);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+            u8arr[i] = bstr.charCodeAt(i);
+        }
+        
+        console.log(`[dataURLtoFile] Fichier créé: ${filename}, type: ${mime}, taille: ${u8arr.length} bytes`);
+        return new File([u8arr], filename, {type: mime});
+    } catch (error) {
+        console.error('[dataURLtoFile] Erreur lors du décodage base64:', error);
+        throw new Error('Erreur lors du décodage des données du fichier');
+    }
 }
 
 // =================================================================================================
@@ -301,27 +368,52 @@ async function processSingleContact(contactName, message, attachmentsData) {
         await waitForElement(MESSAGE_BOX_SELECTOR, 10000); // Attendre que la conversation soit pleinement chargée
 
         // 2. Préparer les pièces jointes
-        const fileObjects = attachmentsData.map(att => {
-            // Créer le fichier avec le bon type MIME
-            let finalFileName = att.name;
-            let finalMimeType = att.type;
-            
-            // Forcer .ogg pour les messages vocaux
-            if (att.isVoiceMessage || att.name.includes('Message_vocal') || att.type.includes('ogg')) {
-                if (!finalFileName.endsWith('.ogg')) {
-                    finalFileName = finalFileName.replace(/\.(webm|mp3|wav|m4a)$/, '.ogg');
+        const fileObjects = [];
+        
+        for (const att of attachmentsData) {
+            try {
+                if (att.isLargeFile && att.fileId) {
+                    // Fichier de référence - le convertir en File réel
+                    console.log(`[processSingleContact] Converting large file reference: ${att.name}`);
+                    const originalFile = await convertLargeFileReferenceToFile(att);
+                    fileObjects.push(originalFile);
+                } else if (att.dataUrl && typeof att.dataUrl === 'string') {
+                    // Fichier normal stocké en base64
+                    let finalFileName = att.name;
+                    let finalMimeType = att.type;
+                    
+                    // Forcer .ogg pour les messages vocaux
+                    if (att.isVoiceMessage || att.name.includes('Message_vocal') || att.type.includes('ogg')) {
+                        if (!finalFileName.endsWith('.ogg')) {
+                            finalFileName = finalFileName.replace(/\.(webm|mp3|wav|m4a)$/, '.ogg');
+                        }
+                        finalMimeType = 'audio/ogg';
+                    }
+                    
+                    // Créer une nouvelle dataURL avec le bon MIME type si nécessaire
+                    let finalDataURL = att.dataUrl;
+                    if (att.type !== finalMimeType) {
+                        finalDataURL = att.dataUrl.replace(/data:audio\/[^;]+/, `data:${finalMimeType}`);
+                    }
+                    
+                    console.log(`[processSingleContact] Processing attachment: ${finalFileName}, type: ${finalMimeType}`);
+                    const fileObj = dataURLtoFile(finalDataURL, finalFileName);
+                    fileObjects.push(fileObj);
+                } else {
+                    console.warn(`[processSingleContact] Skipping attachment with invalid data: ${att.name}`);
                 }
-                finalMimeType = 'audio/ogg';
+            } catch (error) {
+                console.error(`[processSingleContact] Error processing attachment ${att.name}:`, error);
+                
+                // Afficher une erreur spécifique pour les fichiers de référence manquants
+                if (error.message.includes('File reference not found')) {
+                    throw new Error(`Le fichier "${att.name}" n'est plus disponible. Veuillez le rajouter au modèle.`);
+                }
+                
+                // Pour les autres erreurs, continuer avec les autres fichiers
+                console.warn(`[processSingleContact] Skipping attachment ${att.name} due to error`);
             }
-            
-            // Créer une nouvelle dataURL avec le bon MIME type si nécessaire
-            let finalDataURL = att.dataUrl;
-            if (att.type !== finalMimeType) {
-                finalDataURL = att.dataUrl.replace(/data:audio\/[^;]+/, `data:${finalMimeType}`);
-            }
-            
-            return dataURLtoFile(finalDataURL, finalFileName);
-        });
+        }
         
         const mediaAttachments = fileObjects.filter(att => att.type.startsWith('image/') || att.type.startsWith('video/'));
         const audioAttachments = fileObjects.filter(att => att.type.startsWith('audio/') && !att.name.endsWith('.ogg'));
@@ -1007,6 +1099,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 let attachmentsForCurrentSend = []; // Stocke les P.J. du modèle sélectionné pour l'envoi
 let currentTemplateAttachments = []; // Stocke les P.J. pour l'éditeur de modèle
+let temporaryFileReferences = new Map(); // Stocke les références temporaires aux gros fichiers
 
 /**
  * Ouvre la modale d'envoi en masse.
@@ -1570,6 +1663,13 @@ function injectTemplatesModal() {
     });
 
     newBtn.addEventListener('click', () => {
+        // Nettoyer les références temporaires des anciens attachments
+        currentTemplateAttachments.forEach(att => {
+            if (att.isLargeFile && att.fileId) {
+                temporaryFileReferences.delete(att.fileId);
+            }
+        });
+        
         document.getElementById('cx-template-name-input').value = '';
         document.getElementById('cx-template-content-textarea').value = '';
         currentTemplateAttachments = [];
@@ -1623,16 +1723,35 @@ function injectTemplatesModal() {
             return;
         }
 
-        const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
-        // Sauvegarder dans le nouveau format objet
-        messageTemplates[name] = {
-            message: content,
-            attachments: currentTemplateAttachments
-        };
-        await chrome.storage.local.set({ messageTemplates });
-        
-        await renderTemplatesInModal();
-        alert(`Modèle "${name}" enregistré !`);
+        try {
+            const { messageTemplates = {} } = await chrome.storage.local.get('messageTemplates');
+            
+            // Vérifier s'il y a des fichiers de référence
+            const hasLargeFiles = currentTemplateAttachments.some(att => att.isLargeFile);
+            
+            // Sauvegarder dans le nouveau format objet
+            messageTemplates[name] = {
+                message: content,
+                attachments: currentTemplateAttachments
+            };
+            await chrome.storage.local.set({ messageTemplates });
+            
+            await renderTemplatesInModal();
+            
+            if (hasLargeFiles) {
+                alert(`✅ Modèle "${name}" enregistré !\n\n⚠️ Important: Ce modèle contient des fichiers volumineux stockés en mode référence. Ces fichiers ne seront disponibles que tant que vous ne fermez pas cette session de navigateur.`);
+            } else {
+                alert(`Modèle "${name}" enregistré !`);
+            }
+        } catch (error) {
+            console.error('[Template Save] Error saving template:', error);
+            
+            if (error.message && error.message.includes('quota')) {
+                alert(`❌ Erreur de stockage: Le modèle "${name}" est trop volumineux.\n\nLa limite de stockage Chrome est dépassée. Essayez de:\n• Compresser vos fichiers vidéo/image\n• Supprimer d'anciens modèles\n• Utiliser des fichiers plus petits (< 2MB)`);
+            } else {
+                alert(`Erreur lors de l'enregistrement du modèle "${name}": ${error.message}`);
+            }
+        }
     });
 
     templateList.addEventListener('click', async (e) => {
@@ -1676,22 +1795,237 @@ function injectTemplatesModal() {
         const files = Array.from(event.target.files);
         if (!files.length) return;
 
-        const filePromises = files.map(file => {
+        console.log(`[Template Attachments] Processing ${files.length} files`);
+
+        // Créer un conteneur pour la barre de progression
+        const progressContainer = document.createElement('div');
+        progressContainer.id = 'cx-upload-progress-container';
+        progressContainer.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            z-index: 100000;
+            min-width: 300px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        `;
+        document.body.appendChild(progressContainer);
+
+        const filePromises = files.map((file, index) => {
             return new Promise((resolve, reject) => {
+                console.log(`[Template Attachments] Processing file: ${file.name}, size: ${file.size} bytes, type: ${file.type}`);
+                
+                // Mettre à jour la barre de progression
+                progressContainer.innerHTML = `
+                    <div style="margin-bottom: 15px;">📁 Importation des fichiers...</div>
+                    <div style="margin-bottom: 10px;">${file.name}</div>
+                    <div style="background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;">
+                        <div style="background: linear-gradient(90deg, #facc37, #f4c430); height: 8px; width: ${((index + 1) / files.length) * 100}%; transition: width 0.3s ease;"></div>
+                    </div>
+                    <div style="font-size: 12px; color: #ccc;">${index + 1} / ${files.length} fichiers</div>
+                `;
+                
+                // Vérifier la taille du fichier
+                const maxSizeBytes = 180 * 1024 * 1024; // 180MB
+                const storageLimit = 2 * 1024 * 1024; // 2MB pour stockage direct
+                
+                if (file.size > maxSizeBytes) {
+                    console.warn(`[Template Attachments] File too large: ${file.name} (${file.size} bytes > ${maxSizeBytes} bytes)`);
+                    
+                    // Afficher erreur spécifique pour 180MB
+                    progressContainer.innerHTML = `
+                        <div style="margin-bottom: 15px; color: #ff4444;">❌ Erreur</div>
+                        <div style="margin-bottom: 10px;">Le fichier "${file.name}" dépasse la limite de 180MB</div>
+                        <div style="margin-bottom: 15px; font-size: 14px; color: #ffaa44;">
+                            Taille actuelle: ${Math.round(file.size / 1024 / 1024)}MB<br>
+                            Limite maximum: 180MB
+                        </div>
+                        <button onclick="this.parentElement.remove()" style="background: #facc37; color: #1b1d4f; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">OK</button>
+                    `;
+                    
+                    setTimeout(() => {
+                        if (progressContainer.parentElement) {
+                            progressContainer.remove();
+                        }
+                    }, 5000);
+                    
+                    resolve(null);
+                    return;
+                }
+                
+                // Pour les fichiers > 2MB : stocker seulement les métadonnées
+                if (file.size > storageLimit) {
+                    console.log(`[Template Attachments] Large file detected: ${file.name} (${Math.round(file.size / 1024 / 1024)}MB). Storing metadata only.`);
+                    
+                    progressContainer.innerHTML = `
+                        <div style="margin-bottom: 15px; color: #ffaa44;">⚠️ Fichier volumineux détecté</div>
+                        <div style="margin-bottom: 10px;">${file.name}</div>
+                        <div style="margin-bottom: 15px; font-size: 14px; color: #ccc;">
+                            Taille: ${Math.round(file.size / 1024 / 1024)}MB<br>
+                            Mode: Référence de fichier (sans stockage)
+                        </div>
+                        <div style="background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;">
+                            <div style="background: linear-gradient(90deg, #ff9800, #ffb74d); height: 8px; width: 100%; transition: width 0.3s ease;"></div>
+                        </div>
+                    `;
+                    
+                    // Créer un attachment de type "référence"
+                    setTimeout(() => {
+                        progressContainer.innerHTML = `
+                            <div style="margin-bottom: 15px; color: #ff9800;">📎 Fichier ajouté en mode référence</div>
+                            <div style="margin-bottom: 10px;">${file.name}</div>
+                            <div style="font-size: 12px; color: #ccc;">Le fichier sera lu lors de l'envoi</div>
+                        `;
+                        
+                        // Créer un ID unique pour ce fichier
+                        const fileId = `large_file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                        
+                        // Stocker la référence temporaire au fichier réel
+                        temporaryFileReferences.set(fileId, file);
+                        
+                        resolve({
+                            dataUrl: null, // Pas de stockage des données
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
+                            isLargeFile: true, // Marqueur pour les gros fichiers
+                            lastModified: file.lastModified,
+                            fileId: fileId, // ID pour retrouver le fichier
+                            // On stocke une référence temporaire au fichier
+                            fileReference: {
+                                name: file.name,
+                                size: file.size,
+                                type: file.type,
+                                lastModified: file.lastModified
+                            }
+                        });
+                    }, 1000);
+                    
+                    return;
+                }
+                
                 const reader = new FileReader();
-                reader.onload = (e) => resolve({
-                    dataUrl: e.target.result,
-                    name: file.name,
-                    type: file.type
-                });
-                reader.onerror = reject;
+                
+                reader.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        progressContainer.innerHTML = `
+                            <div style="margin-bottom: 15px;">📁 Lecture du fichier...</div>
+                            <div style="margin-bottom: 10px;">${file.name}</div>
+                            <div style="background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;">
+                                <div style="background: linear-gradient(90deg, #00a884, #06cf9c); height: 8px; width: ${percentComplete}%; transition: width 0.1s ease;"></div>
+                            </div>
+                            <div style="font-size: 12px; color: #ccc;">${Math.round(percentComplete)}% - ${Math.round(e.loaded / 1024)} Ko / ${Math.round(e.total / 1024)} Ko</div>
+                        `;
+                    }
+                };
+                
+                reader.onload = (e) => {
+                    const result = e.target.result;
+                    if (!result || typeof result !== 'string') {
+                        console.error(`[Template Attachments] Invalid result for file: ${file.name}`);
+                        resolve(null);
+                        return;
+                    }
+                    
+                    console.log(`[Template Attachments] File processed successfully: ${file.name}, dataUrl length: ${result.length}`);
+                    
+                    // Animation de succès
+                    progressContainer.innerHTML = `
+                        <div style="margin-bottom: 15px; color: #00ff88;">✅ Fichier importé avec succès!</div>
+                        <div style="margin-bottom: 10px;">${file.name}</div>
+                        <div style="background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;">
+                            <div style="background: linear-gradient(90deg, #00ff88, #00cc66); height: 8px; width: 100%; transition: width 0.3s ease;"></div>
+                        </div>
+                        <div style="font-size: 12px; color: #ccc;">Terminé</div>
+                    `;
+                    
+                    resolve({
+                        dataUrl: result,
+                        name: file.name,
+                        type: file.type
+                    });
+                };
+                
+                reader.onerror = (error) => {
+                    console.error(`[Template Attachments] Error reading file ${file.name}:`, error);
+                    
+                    // Afficher erreur de lecture
+                    progressContainer.innerHTML = `
+                        <div style="margin-bottom: 15px; color: #ff4444;">❌ Erreur de lecture</div>
+                        <div style="margin-bottom: 10px;">Impossible de lire "${file.name}"</div>
+                        <button onclick="this.parentElement.remove()" style="background: #facc37; color: #1b1d4f; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">OK</button>
+                    `;
+                    
+                    setTimeout(() => {
+                        if (progressContainer.parentElement) {
+                            progressContainer.remove();
+                        }
+                    }, 3000);
+                    
+                    reject(error);
+                };
+                
                 reader.readAsDataURL(file);
             });
         });
 
-        const newAttachments = await Promise.all(filePromises);
-        currentTemplateAttachments.push(...newAttachments);
-        renderTemplateAttachments(currentTemplateAttachments);
+        try {
+            const attachmentResults = await Promise.all(filePromises);
+            const newAttachments = attachmentResults.filter(att => att !== null);
+            
+            if (newAttachments.length > 0) {
+                currentTemplateAttachments.push(...newAttachments);
+                renderTemplateAttachments(currentTemplateAttachments);
+                console.log(`[Template Attachments] Added ${newAttachments.length} attachments to template`);
+                
+                // Animation finale de succès
+                progressContainer.innerHTML = `
+                    <div style="margin-bottom: 15px; color: #00ff88;">🎉 Importation terminée!</div>
+                    <div style="margin-bottom: 10px;">${newAttachments.length} fichier(s) ajouté(s)</div>
+                    <div style="background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;">
+                        <div style="background: linear-gradient(90deg, #00ff88, #00cc66); height: 8px; width: 100%;"></div>
+                    </div>
+                `;
+                
+                setTimeout(() => {
+                    progressContainer.remove();
+                }, 1500);
+            } else {
+                // Aucun fichier valide
+                progressContainer.innerHTML = `
+                    <div style="margin-bottom: 15px; color: #ffaa44;">⚠️ Aucun fichier importé</div>
+                    <div style="margin-bottom: 10px;">Vérifiez la taille et le format des fichiers</div>
+                    <button onclick="this.parentElement.remove()" style="background: #facc37; color: #1b1d4f; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">OK</button>
+                `;
+                
+                setTimeout(() => {
+                    if (progressContainer.parentElement) {
+                        progressContainer.remove();
+                    }
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('[Template Attachments] Error processing files:', error);
+            
+            progressContainer.innerHTML = `
+                <div style="margin-bottom: 15px; color: #ff4444;">❌ Erreur lors du traitement</div>
+                <div style="margin-bottom: 10px;">Une erreur est survenue</div>
+                <button onclick="this.parentElement.remove()" style="background: #facc37; color: #1b1d4f; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">OK</button>
+            `;
+            
+            setTimeout(() => {
+                if (progressContainer.parentElement) {
+                    progressContainer.remove();
+                }
+            }, 3000);
+        }
+        
         event.target.value = ''; // Allow re-selecting the same file
     });
 
@@ -1908,52 +2242,142 @@ function renderTemplateAttachments(attachments) {
         const attachmentDiv = document.createElement('div');
         attachmentDiv.className = 'cx-attachment-item';
         
+        // Style sombre pour l'arrière-plan
+        attachmentDiv.style.cssText = `
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+            color: #ffffff;
+            position: relative;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        `;
+        
+        // Vérifier si l'attachment a une dataUrl valide OU si c'est un fichier de référence
+        const hasValidData = attachment.dataUrl && typeof attachment.dataUrl === 'string' && attachment.dataUrl.length > 0;
+        const isLargeFileRef = attachment.isLargeFile && attachment.fileReference;
+        const isValidAttachment = hasValidData || isLargeFileRef;
+        
         // Icône selon le type de fichier et si c'est un message vocal
         let icon = '📄';
         let typeLabel = attachment.type.split('/')[1];
+        let statusIcon = '';
+        let sizeInfo = '';
+        
+        if (isLargeFileRef) {
+            statusIcon = ' 📎'; // Icône de référence
+            sizeInfo = ` (${Math.round(attachment.size / 1024 / 1024)}MB)`;
+        } else if (!hasValidData) {
+            statusIcon = ' ⚠️'; // Problème
+        }
         
         if (attachment.type.startsWith('image/')) {
             icon = '🖼️';
         } else if (attachment.type.startsWith('audio/')) {
             if (attachment.isVoiceMessage || attachment.name.includes('Message_vocal') || attachment.type.includes('ogg')) {
-                icon = '�'; // Icône microphone pour les messages vocaux
+                icon = '🎤'; // Icône microphone pour les messages vocaux
                 typeLabel = 'vocal WhatsApp';
             } else {
-                icon = '�🎵'; // Icône musique pour les autres fichiers audio
+                icon = '🎵'; // Icône musique pour les autres fichiers audio
             }
         } else if (attachment.type.startsWith('video/')) {
             icon = '🎬';
         }
         
+        let warningText = '';
+        if (isLargeFileRef) {
+            warningText = '<div style="color: #ff9800; font-size: 12px; margin-top: 8px;">📎 Fichier de référence - sera lu lors de l\'envoi</div>';
+        } else if (!hasValidData) {
+            warningText = '<div style="color: #ffaa44; font-size: 12px; margin-top: 8px;">⚠️ Données manquantes - fichier trop volumineux?</div>';
+        }
+        
         attachmentDiv.innerHTML = `
-            <span class="cx-attachment-icon">${icon}</span>
-            <span class="cx-attachment-name">${attachment.name}</span>
-            <span class="cx-attachment-type">(${typeLabel})</span>
-            <button class="cx-attachment-remove" data-index="${index}" title="Supprimer">&times;</button>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; flex: 1;">
+                    <span style="font-size: 24px; margin-right: 12px;">${icon}</span>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 600; color: #ffffff; word-break: break-word;">${attachment.name}${statusIcon}${sizeInfo}</div>
+                        <div style="font-size: 12px; color: #aaaaaa; margin-top: 2px;">${typeLabel}</div>
+                    </div>
+                </div>
+                <button class="cx-attachment-remove" data-index="${index}" 
+                        style="background: #ff4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: background 0.2s ease;"
+                        title="Supprimer"
+                        onmouseover="this.style.background='#ff6666'" 
+                        onmouseout="this.style.background='#ff4444'">&times;</button>
+            </div>
+            ${warningText}
         `;
         
-        // Si c'est un fichier audio, ajouter un lecteur
-        if (attachment.type.startsWith('audio/')) {
+        // Si c'est un fichier audio ET qu'il a des données valides, ajouter un lecteur
+        if (attachment.type.startsWith('audio/') && hasValidData) {
             const audioPlayer = document.createElement('audio');
             audioPlayer.controls = true;
             audioPlayer.src = attachment.dataUrl;
-            audioPlayer.style.width = '100%';
-            audioPlayer.style.marginTop = '5px';
+            audioPlayer.style.cssText = `
+                width: 100%;
+                margin-top: 10px;
+                border-radius: 8px;
+                background: #1a1a1a;
+            `;
             
             // Style spécial pour les messages vocaux
             if (attachment.isVoiceMessage || attachment.name.includes('Message_vocal')) {
                 audioPlayer.style.border = '2px solid #00a884';
-                audioPlayer.style.borderRadius = '8px';
-                audioPlayer.style.background = '#f0f8f5';
+                audioPlayer.style.background = '#1a2a1a';
             }
             
             attachmentDiv.appendChild(audioPlayer);
+        }
+        
+        // Si c'est une image ET qu'elle a des données valides, ajouter un aperçu
+        if (attachment.type.startsWith('image/') && hasValidData) {
+            const imagePreview = document.createElement('img');
+            imagePreview.src = attachment.dataUrl;
+            imagePreview.style.cssText = `
+                width: 100%;
+                max-height: 200px;
+                object-fit: cover;
+                margin-top: 10px;
+                border-radius: 8px;
+                border: 2px solid #facc37;
+            `;
+            
+            attachmentDiv.appendChild(imagePreview);
+        }
+        
+        // Pour les vidéos, afficher seulement les informations (pas d'aperçu)
+        if (attachment.type.startsWith('video/') && hasValidData) {
+            const videoInfo = document.createElement('div');
+            videoInfo.style.cssText = `
+                margin-top: 10px;
+                padding: 8px;
+                background: #1a1a1a;
+                border: 2px solid #facc37;
+                border-radius: 8px;
+                color: #aaaaaa;
+                font-size: 12px;
+                text-align: center;
+            `;
+            videoInfo.innerHTML = `🎬 Vidéo prête à être envoyée (aperçu non disponible)`;
+            
+            attachmentDiv.appendChild(videoInfo);
         }
         
         previewContainer.appendChild(attachmentDiv);
 
         // Ajouter l'événement de suppression
         attachmentDiv.querySelector('.cx-attachment-remove').addEventListener('click', () => {
+            const attachmentToRemove = currentTemplateAttachments[index];
+            
+            // Nettoyer la référence temporaire si c'est un gros fichier
+            if (attachmentToRemove.isLargeFile && attachmentToRemove.fileId) {
+                temporaryFileReferences.delete(attachmentToRemove.fileId);
+                console.log(`[Template Attachments] Cleaned up file reference: ${attachmentToRemove.name}`);
+            }
+            
             currentTemplateAttachments.splice(index, 1);
             renderTemplateAttachments(currentTemplateAttachments);
         });
